@@ -132,7 +132,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     workspacePaths: [],
     activeWorkspace: null,
     activeTerminalTabId: null,
-    sidebarWidth: 260,
+    sidebarWidth: 210,
     ollamaStatus: { running: false, models: [] },
     systemLogs: [],
     terminalSessions: [],
@@ -171,7 +171,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       set({
         workspaces: loadedWorkspaces,
         workspacePaths: loadedPaths,
-        sidebarWidth: savedLayout.sidebarWidth || 260,
+        sidebarWidth: savedLayout.sidebarWidth || 210,
         systemLogs: savedLogs,
         managedProcesses: initialProcesses,
       });
@@ -243,6 +243,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
             shell: preset.shell,
             type: res.type,
           });
+
+          await get().addSystemLog(`Spawned preset terminal session: ${preset.name} (${preset.shell})`, 'info');
 
           if (!firstTabId) {
             firstTabId = termId;
@@ -361,11 +363,19 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     },
 
     checkOllama: async () => {
+      const prevOllamaStatus = get().ollamaStatus;
       try {
         const status = await window.api.ollama.checkStatus();
         set({ ollamaStatus: status });
+        
+        if (prevOllamaStatus.running !== status.running) {
+          await get().addSystemLog(`Ollama local GPU service is now ${status.running ? 'ONLINE' : 'OFFLINE'}`, status.running ? 'success' : 'error');
+        }
       } catch (e) {
         set({ ollamaStatus: { running: false, models: [] } });
+        if (prevOllamaStatus.running) {
+          await get().addSystemLog(`Ollama local GPU service is now OFFLINE`, 'error');
+        }
       }
     },
 
@@ -469,6 +479,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
           runsCount: runsMock,
           modelCount: ws.id === 'sound-machina' ? 2 : undefined,
         };
+
+        const prevObs = get().workspaceObservability[ws.id];
+        if (!prevObs || prevObs.apiOnline !== isOnline) {
+          await get().addSystemLog(`Workspace Health: API service for "${ws.name}" is now ${isOnline ? 'HEALTHY (Port ' + portNum + ')' : 'OFFLINE'}`, isOnline ? 'success' : 'warning');
+        }
       }
 
       set({ workspaceObservability: nextObservability });
