@@ -2,6 +2,8 @@
 
 ### Workspace Runtime Control Center for AI-Assisted Development
 
+![AgentDeck Operator Console Dashboard](docs/screenshots/dashboard-overview.png)
+
 AgentDeck is a desktop workspace orchestrator that combines terminals, local AI services, browser previews, runtime observability, and project control into a single operator console. 
 
 Built with Electron, React, TypeScript, xterm.js, and Node.js, AgentDeck provides a unified environment for managing local projects, AI workflows, VPS infrastructure, and development runtimes.
