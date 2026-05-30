@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "agentdeck.workspace.v1",
+  "id": "sound-machina",
+  "name": "Sound Machina",
+  "rootPath": "E:\\AgentDeck",
+  "previewUrl": "http://localhost:3000",
+  "health": {
+    "type": "http",
+    "url": "http://localhost:3000"
+  },
+  "commands": [
+    {
+      "id": "start-engine",
+      "label": "Start Sound Engine",
+      "shell": "powershell.exe",
+      "command": "echo 'python sound_engine.py'"
+    }
+  ],
+  "terminals": [
+    {
+      "name": "PowerShell",
+      "shell": "powershell.exe",
+      "cwd": "E:\\AgentDeck"
+    },
+    {
+      "name": "WSL Ubuntu",
+      "shell": "wsl.exe",
+      "cwd": "~"
+    }
+  ]
+}

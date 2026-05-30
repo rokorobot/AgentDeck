@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "agentdeck.workspace.v1",
+  "id": "tm4",
+  "name": "TM4 Studio",
+  "rootPath": "E:\\AgentDeck",
+  "previewUrl": "http://localhost:8000",
+  "health": {
+    "type": "http",
+    "url": "http://localhost:8000"
+  },
+  "commands": [
+    {
+      "id": "start-backend",
+      "label": "Start API Backend",
+      "shell": "powershell.exe",
+      "command": "echo 'uvicorn main:app --reload'"
+    }
+  ],
+  "terminals": [
+    {
+      "name": "PowerShell",
+      "shell": "powershell.exe",
+      "cwd": "E:\\AgentDeck"
+    },
+    {
+      "name": "WSL Ubuntu",
+      "shell": "wsl.exe",
+      "cwd": "~"
+    },
+    {
+      "name": "Ollama Monitor",
+      "shell": "powershell.exe",
+      "command": "ollama list"
+    }
+  ]
+}

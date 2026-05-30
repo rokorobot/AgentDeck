@@ -1,0 +1,9 @@
+node_modules/
+dist/
+dist-electron/
+dist-package/
+data/
+.gemini/
+.env
+*.log
+.DS_Store

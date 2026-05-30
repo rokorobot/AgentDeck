@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "agentdeck.workspace.v1",
+  "id": "robotstore",
+  "name": "RobotStore",
+  "rootPath": "E:\\AgentDeck",
+  "previewUrl": "http://localhost:5173",
+  "health": {
+    "type": "http",
+    "url": "http://localhost:5173"
+  },
+  "commands": [
+    {
+      "id": "start-vite",
+      "label": "Start Frontend",
+      "shell": "powershell.exe",
+      "command": "echo 'npm run dev'"
+    }
+  ],
+  "terminals": [
+    {
+      "name": "PowerShell",
+      "shell": "powershell.exe",
+      "cwd": "E:\\AgentDeck"
+    }
+  ]
+}

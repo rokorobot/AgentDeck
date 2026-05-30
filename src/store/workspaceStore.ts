@@ -1,0 +1,649 @@
+import { create } from 'zustand';
+import { Workspace, ManagedProcess } from '../types/workspace';
+import { checkCommandSafety } from '../lib/commandSafety';
+
+// Extend window object types for TypeScript safety
+declare global {
+  interface Window {
+    api: {
+      workspaces: {
+        loadAll(): Promise<Workspace[]>;
+        load(id: string): Promise<Workspace | null>;
+        openDirectory(): Promise<string | null>;
+        loadFromPath(path: string): Promise<Workspace | null>;
+      };
+      layout: {
+        save(layout: any): Promise<boolean>;
+        load(): Promise<any>;
+      };
+      logs: {
+        save(logs: any[]): Promise<boolean>;
+        load(): Promise<any[]>;
+        add(logEntry: any): Promise<any>;
+        onLogsChanged(callback: () => void): () => void;
+      };
+      ollama: {
+        checkStatus(): Promise<{ running: boolean; models: string[] }>;
+      };
+      ports: {
+        checkHealth(url: string): Promise<{ online: boolean }>;
+      };
+      process: {
+        start(workspaceId: string, command: any, cwd: string): Promise<ManagedProcess>;
+        stop(runId: string): Promise<boolean>;
+        restart(runId: string): Promise<ManagedProcess | null>;
+        list(): Promise<ManagedProcess[]>;
+        onStateChanged(callback: (processes: ManagedProcess[]) => void): () => void;
+      };
+      ide: {
+        open(ide: string, folderPath: string): Promise<{ success: boolean; error?: string }>;
+      };
+      terminal: {
+        create(
+          id: string,
+          shell: string,
+          args: string[],
+          cwd: string,
+          cols: number,
+          rows: number
+        ): Promise<{ id: string; type: string }>;
+        write(id: string, data: string): void;
+        resize(id: string, cols: number, rows: number): void;
+        kill(id: string): Promise<boolean>;
+        onData(id: string, callback: (data: string) => void): () => void;
+        onExit(id: string, callback: (code: number) => void): () => void;
+        onFallbackRecreated(id: string, callback: () => void): () => void;
+      };
+      safety: {
+        approveCommand(command: string): Promise<boolean>;
+      };
+    };
+  }
+}
+
+export interface TerminalSessionState {
+  id: string;
+  name: string;
+  shell: string;
+  type: string;
+}
+
+interface SafetyDialogState {
+  open: boolean;
+  command: string;
+  terminalId: string;
+  reason: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+export interface WorkspaceObservability {
+  apiOnline: boolean;
+  port: number;
+  runsCount: number;
+  modelCount?: number;
+}
+
+interface WorkspaceStore {
+  workspaces: Workspace[];
+  workspacePaths: string[];
+  activeWorkspace: Workspace | null;
+  activeTerminalTabId: string | null;
+  sidebarWidth: number;
+  ollamaStatus: { running: boolean; models: string[] };
+  systemLogs: any[];
+  terminalSessions: TerminalSessionState[];
+  safetyDialog: SafetyDialogState | null;
+  workspaceObservability: Record<string, WorkspaceObservability>;
+  managedProcesses: ManagedProcess[];
+  runtimeLogs: { timestamp: string; tabName: string; message: string }[];
+
+  init(): Promise<void>;
+  setActiveWorkspace(id: string): Promise<void>;
+  setSidebarWidth(width: number): Promise<void>;
+  setActiveTerminalTabId(id: string | null): void;
+  createTerminal(name: string, shell: string, cwd: string, initialCommand?: string): Promise<string>;
+  killTerminal(id: string): Promise<void>;
+  checkOllama(): Promise<void>;
+  addSystemLog(message: string, type: 'info' | 'warning' | 'error' | 'success'): Promise<void>;
+  loadLogsFromBackend(): Promise<void>;
+  setSafetyDialog(dialog: SafetyDialogState | null): void;
+  approveSafetyCommand(command: string): Promise<boolean>;
+  addWorkspaceFolder(): Promise<void>;
+  pollPortsHealth(): Promise<void>;
+  executeWorkspaceCommand(commandId: string): Promise<void>;
+  startManagedProcess(cmd: any): Promise<void>;
+  stopManagedProcess(runId: string): Promise<void>;
+  restartManagedProcess(runId: string): Promise<void>;
+  openWorkspaceInIDE(ide: string): Promise<void>;
+  addRuntimeLog(terminalId: string, data: string): void;
+}
+
+const terminalLineBuffers: Record<string, string> = {};
+
+export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
+  let ollamaInterval: NodeJS.Timeout | null = null;
+  let healthInterval: NodeJS.Timeout | null = null;
+  let offStateListener: (() => void) | null = null;
+  let offLogsListener: (() => void) | null = null;
+
+  return {
+    workspaces: [],
+    workspacePaths: [],
+    activeWorkspace: null,
+    activeTerminalTabId: null,
+    sidebarWidth: 260,
+    ollamaStatus: { running: false, models: [] },
+    systemLogs: [],
+    terminalSessions: [],
+    safetyDialog: null,
+    workspaceObservability: {},
+    managedProcesses: [],
+    runtimeLogs: [],
+
+    init: async () => {
+      // 1. Load layout configs and logs
+      const savedLayout = await window.api.layout.load();
+      const savedLogs = await window.api.logs.load();
+      const initialProcesses = await window.api.process.list();
+      
+      const loadedPaths: string[] = savedLayout.workspacePaths || [];
+      const loadedWorkspaces: Workspace[] = [];
+
+      // 2. Load presets
+      const defaultPresets = await window.api.workspaces.loadAll();
+      loadedWorkspaces.push(...defaultPresets);
+
+      // 3. Scan user folders
+      for (const folderPath of loadedPaths) {
+        try {
+          const ws = await window.api.workspaces.loadFromPath(folderPath);
+          if (ws) {
+            if (!loadedWorkspaces.some((w) => w.id === ws.id)) {
+              loadedWorkspaces.push(ws);
+            }
+          }
+        } catch (e) {
+          console.error(`Failed to scan registered folder ${folderPath}:`, e);
+        }
+      }
+
+      set({
+        workspaces: loadedWorkspaces,
+        workspacePaths: loadedPaths,
+        sidebarWidth: savedLayout.sidebarWidth || 260,
+        systemLogs: savedLogs,
+        managedProcesses: initialProcesses,
+      });
+
+      // 4. Set active workspace scope
+      const targetWorkspaceId = savedLayout.activeWorkspaceId || 'tm4';
+      await get().setActiveWorkspace(targetWorkspaceId);
+
+      // 5. Ollama health check interval
+      await get().checkOllama();
+      if (ollamaInterval) clearInterval(ollamaInterval);
+      ollamaInterval = setInterval(() => {
+        get().checkOllama();
+      }, 10000);
+
+      // 6. Local port checking interval
+      await get().pollPortsHealth();
+      if (healthInterval) clearInterval(healthInterval);
+      healthInterval = setInterval(() => {
+        get().pollPortsHealth();
+      }, 6000);
+
+      // 7. IPC Process & logs updates observers
+      if (offStateListener) offStateListener();
+      offStateListener = window.api.process.onStateChanged((processes) => {
+        set({ managedProcesses: processes });
+      });
+
+      if (offLogsListener) offLogsListener();
+      offLogsListener = window.api.logs.onLogsChanged(() => {
+        get().loadLogsFromBackend();
+      });
+    },
+
+    setActiveWorkspace: async (id: string) => {
+      const { workspaces, terminalSessions } = get();
+      const workspace = workspaces.find((w) => w.id === id);
+      if (!workspace) return;
+
+      // Kill previous terminals (non-managed shell console sessions only)
+      // Managed processes are preserved and we don't kill them blindly!
+      for (const session of terminalSessions) {
+        // If it starts with 'run-', it's a managed process. Preserve it!
+        if (!session.id.startsWith('run-')) {
+          await window.api.terminal.kill(session.id);
+        }
+      }
+
+      set({
+        activeWorkspace: workspace,
+        terminalSessions: get().terminalSessions.filter((s) => s.id.startsWith('run-')),
+        activeTerminalTabId: null,
+      });
+
+      // Spawning default TTY terminals
+      const spawnedSessions: TerminalSessionState[] = [];
+      let firstTabId: string | null = null;
+
+      for (const preset of workspace.terminals) {
+        const termId = `term-${workspace.id}-${preset.name.toLowerCase().replace(/\s+/g, '-')}`;
+        const cwd = workspace.rootPath || 'E:\\AgentDeck';
+
+        try {
+          const res = await window.api.terminal.create(termId, preset.shell, [], cwd, 80, 24);
+          
+          spawnedSessions.push({
+            id: termId,
+            name: preset.name,
+            shell: preset.shell,
+            type: res.type,
+          });
+
+          if (!firstTabId) {
+            firstTabId = termId;
+          }
+
+          // If preset defines shell command, write it
+          if (preset.command) {
+            setTimeout(() => {
+              window.api.terminal.write(termId, preset.command + '\r');
+            }, 600);
+          }
+        } catch (e) {
+          console.error(`Failed to spawn terminal preset ${preset.name}:`, e);
+        }
+      }
+
+      // Merge user shells with running commands tabs
+      set((state) => {
+        const merged = [...spawnedSessions, ...state.terminalSessions];
+        const activeTab = firstTabId || (merged.length > 0 ? merged[0].id : null);
+        return {
+          terminalSessions: merged,
+          activeTerminalTabId: activeTab,
+        };
+      });
+
+      // Save layout json
+      await window.api.layout.save({
+        activeWorkspaceId: id,
+        sidebarWidth: get().sidebarWidth,
+        activeTerminalTabId: get().activeTerminalTabId,
+        workspacePaths: get().workspacePaths,
+      });
+
+      await get().addSystemLog(`Scope workspace switched to ${workspace.name}`, 'info');
+    },
+
+    setSidebarWidth: async (width: number) => {
+      set({ sidebarWidth: width });
+      const activeWorkspace = get().activeWorkspace;
+      
+      await window.api.layout.save({
+        activeWorkspaceId: activeWorkspace ? activeWorkspace.id : 'tm4',
+        sidebarWidth: width,
+        activeTerminalTabId: get().activeTerminalTabId,
+        workspacePaths: get().workspacePaths,
+      });
+    },
+
+    setActiveTerminalTabId: (id: string | null) => {
+      set({ activeTerminalTabId: id });
+    },
+
+    createTerminal: async (name: string, shell: string, cwd: string, initialCommand?: string) => {
+      const activeWorkspace = get().activeWorkspace;
+      const workspaceId = activeWorkspace ? activeWorkspace.id : 'custom';
+      const termId = `term-${workspaceId}-user-${Date.now()}`;
+
+      try {
+        const res = await window.api.terminal.create(termId, shell, [], cwd, 80, 24);
+        
+        const newSession: TerminalSessionState = {
+          id: termId,
+          name: name,
+          shell: shell,
+          type: res.type,
+        };
+
+        set((state) => ({
+          terminalSessions: [...state.terminalSessions, newSession],
+          activeTerminalTabId: termId,
+        }));
+
+        if (initialCommand) {
+          setTimeout(() => {
+            window.api.terminal.write(termId, initialCommand + '\r');
+          }, 600);
+        }
+
+        await get().addSystemLog(`Launched custom terminal tab ${name}`, 'success');
+        return termId;
+      } catch (e) {
+        console.error(e);
+        await get().addSystemLog(`Failed to create custom terminal`, 'error');
+        throw e;
+      }
+    },
+
+    killTerminal: async (id: string) => {
+      try {
+        // If killing a managed process tab, trigger process stop sequence too!
+        const isManaged = id.startsWith('run-');
+        if (isManaged) {
+          await get().stopManagedProcess(id);
+          return;
+        }
+
+        await window.api.terminal.kill(id);
+        
+        set((state) => {
+          const filtered = state.terminalSessions.filter((s) => s.id !== id);
+          let newActive = state.activeTerminalTabId;
+          
+          if (state.activeTerminalTabId === id) {
+            newActive = filtered.length > 0 ? filtered[0].id : null;
+          }
+
+          return {
+            terminalSessions: filtered,
+            activeTerminalTabId: newActive,
+          };
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    },
+
+    checkOllama: async () => {
+      try {
+        const status = await window.api.ollama.checkStatus();
+        set({ ollamaStatus: status });
+      } catch (e) {
+        set({ ollamaStatus: { running: false, models: [] } });
+      }
+    },
+
+    addSystemLog: async (message: string, type: 'info' | 'warning' | 'error' | 'success') => {
+      const activeWorkspace = get().activeWorkspace;
+      const logEntry = {
+        message,
+        type,
+        workspaceId: activeWorkspace ? activeWorkspace.id : undefined,
+      };
+
+      const logged = await window.api.logs.add(logEntry);
+      if (logged) {
+        set((state) => ({
+          systemLogs: [logged, ...state.systemLogs].slice(0, 200),
+        }));
+      }
+    },
+
+    loadLogsFromBackend: async () => {
+      const savedLogs = await window.api.logs.load();
+      set({ systemLogs: savedLogs });
+    },
+
+    setSafetyDialog: (dialog: SafetyDialogState | null) => {
+      set({ safetyDialog: dialog });
+    },
+
+    approveSafetyCommand: async (command: string) => {
+      return await window.api.safety.approveCommand(command);
+    },
+
+    addWorkspaceFolder: async () => {
+      try {
+        const folderPath = await window.api.workspaces.openDirectory();
+        if (!folderPath) return;
+
+        const { workspacePaths, workspaces } = get();
+
+        if (workspacePaths.includes(folderPath)) {
+          const loaded = workspaces.find((w) => w.rootPath.toLowerCase() === folderPath.toLowerCase());
+          if (loaded) {
+            await get().setActiveWorkspace(loaded.id);
+          }
+          return;
+        }
+
+        const ws = await window.api.workspaces.loadFromPath(folderPath);
+        if (!ws) {
+          await get().addSystemLog('Selected directory scanner failed.', 'error');
+          return;
+        }
+
+        const updatedPaths = [...workspacePaths, folderPath];
+        const updatedWorkspaces = [...workspaces];
+        if (!updatedWorkspaces.some((w) => w.id === ws.id)) {
+          updatedWorkspaces.push(ws);
+        }
+
+        set({
+          workspacePaths: updatedPaths,
+          workspaces: updatedWorkspaces,
+        });
+
+        await get().setActiveWorkspace(ws.id);
+        await get().addSystemLog(`Successfully registered dynamic workspace: ${ws.name}`, 'success');
+      } catch (err) {
+        console.error('Failed to add directory:', err);
+        await get().addSystemLog('Error adding project folder.', 'error');
+      }
+    },
+
+    pollPortsHealth: async () => {
+      const { workspaces } = get();
+      const nextObservability: Record<string, WorkspaceObservability> = {};
+
+      for (const ws of workspaces) {
+        let isOnline = false;
+        let portNum = 80;
+
+        try {
+          const urlObj = new URL(ws.previewUrl);
+          portNum = parseInt(urlObj.port) || (urlObj.protocol === 'https:' ? 443 : 80);
+          
+          const check = await window.api.ports.checkHealth(ws.previewUrl);
+          isOnline = check.online;
+        } catch {
+          isOnline = false;
+        }
+
+        let runsMock = 0;
+        if (isOnline) {
+          if (ws.id === 'tm4') runsMock = 14;
+          else if (ws.id === 'sound-machina') runsMock = 1;
+          else runsMock = 3;
+        }
+
+        nextObservability[ws.id] = {
+          apiOnline: isOnline,
+          port: portNum,
+          runsCount: runsMock,
+          modelCount: ws.id === 'sound-machina' ? 2 : undefined,
+        };
+      }
+
+      set({ workspaceObservability: nextObservability });
+    },
+
+    executeWorkspaceCommand: async (commandId: string) => {
+      const activeWorkspace = get().activeWorkspace;
+      if (!activeWorkspace || !activeWorkspace.commands) return;
+
+      const cmd = activeWorkspace.commands.find((c) => c.id === commandId);
+      if (!cmd) return;
+
+      const cwd = activeWorkspace.rootPath || 'E:\\AgentDeck';
+
+      // Check if command is already running!
+      const isRunning = get().managedProcesses.some(p => p.commandId === commandId && p.workspaceId === activeWorkspace.id && p.status === 'running');
+      if (isRunning) {
+        const runningProc = get().managedProcesses.find(p => p.commandId === commandId && p.workspaceId === activeWorkspace.id && p.status === 'running');
+        if (runningProc) {
+          // Bring focus to the tab
+          set({ activeTerminalTabId: runningProc.id });
+        }
+        return;
+      }
+
+      // Check command safety
+      const safetyCheck = checkCommandSafety(cmd.command, cwd);
+      if (!safetyCheck.safe) {
+        set({
+          safetyDialog: {
+            open: true,
+            command: cmd.command,
+            terminalId: 'startup-action',
+            reason: safetyCheck.reason || '',
+            onConfirm: async () => {
+              await window.api.safety.approveCommand(cmd.command);
+              await get().startManagedProcess(cmd);
+            },
+            onCancel: () => {
+              get().addSystemLog(`Managed action "${cmd.label}" blocked by security dialog.`, 'warning');
+            }
+          }
+        });
+        return;
+      }
+
+      await get().startManagedProcess(cmd);
+    },
+
+    startManagedProcess: async (cmd: any) => {
+      const activeWorkspace = get().activeWorkspace;
+      if (!activeWorkspace) return;
+      const cwd = activeWorkspace.rootPath || 'E:\\AgentDeck';
+
+      try {
+        const proc = await window.api.process.start(activeWorkspace.id, cmd, cwd);
+        
+        // Add tab session named like command label
+        const newSession: TerminalSessionState = {
+          id: proc.id,
+          name: cmd.label,
+          shell: cmd.shell,
+          type: 'node-pty',
+        };
+
+        set((state) => ({
+          terminalSessions: [...state.terminalSessions, newSession],
+          activeTerminalTabId: proc.id,
+          managedProcesses: [...state.managedProcesses, proc],
+        }));
+
+        await get().addSystemLog(`PROCESS_START_REQUESTED: Spawned managed process "${cmd.label}" (PID ${proc.pid})`, 'success');
+      } catch (e) {
+        console.error('Failed to spawn process:', e);
+      }
+    },
+
+    stopManagedProcess: async (runId: string) => {
+      try {
+        const success = await window.api.process.stop(runId);
+        if (success) {
+          // Remove from terminal tabs
+          set((state) => {
+            const filtered = state.terminalSessions.filter((s) => s.id !== runId);
+            let newActive = state.activeTerminalTabId;
+            if (state.activeTerminalTabId === runId) {
+              newActive = filtered.length > 0 ? filtered[0].id : null;
+            }
+            return {
+              terminalSessions: filtered,
+              activeTerminalTabId: newActive
+            };
+          });
+        }
+      } catch (e) {
+        console.error('Error stopping managed process:', e);
+      }
+    },
+
+    restartManagedProcess: async (runId: string) => {
+      const proc = get().managedProcesses.find((p) => p.id === runId);
+      if (!proc) return;
+
+      try {
+        // Kill existing tab panel on frontend
+        set((state) => ({
+          terminalSessions: state.terminalSessions.filter((s) => s.id !== runId),
+          activeTerminalTabId: state.activeTerminalTabId === runId ? null : state.activeTerminalTabId
+        }));
+
+        const newProc = await window.api.process.restart(runId);
+        if (newProc) {
+          const newSession: TerminalSessionState = {
+            id: newProc.id,
+            name: newProc.label,
+            shell: newProc.shell,
+            type: 'node-pty',
+          };
+
+          set((state) => ({
+            terminalSessions: [...state.terminalSessions, newSession],
+            activeTerminalTabId: newProc.id,
+          }));
+
+          await get().addSystemLog(`PROCESS_RESTARTED: Re-spawned process "${newProc.label}" (PID ${newProc.pid})`, 'success');
+        }
+      } catch (e) {
+        console.error('Failed to restart process:', e);
+      }
+    },
+
+    openWorkspaceInIDE: async (ide: string) => {
+      const activeWorkspace = get().activeWorkspace;
+      if (!activeWorkspace) return;
+
+      try {
+        const res = await window.api.ide.open(ide, activeWorkspace.rootPath);
+        if (!res.success) {
+          await get().addSystemLog(`IDE Open Error: ${res.error}`, 'error');
+        }
+      } catch (e) {
+        console.error('Failed to open IDE:', e);
+      }
+    },
+
+    addRuntimeLog: (terminalId: string, data: string) => {
+      const { terminalSessions } = get();
+      const session = terminalSessions.find(s => s.id === terminalId);
+      const tabName = session ? session.name : 'Terminal';
+
+      let currentBuffer = terminalLineBuffers[terminalId] || '';
+      currentBuffer += data;
+
+      const lines = currentBuffer.split(/\r?\n/);
+      terminalLineBuffers[terminalId] = lines.pop() || '';
+
+      if (lines.length === 0) return;
+
+      const cleanLines = lines.map(line => {
+        let cleaned = line.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+        cleaned = cleaned.replace(/\r/g, '');
+        return cleaned.trim();
+      }).filter(line => line.length > 0);
+
+      if (cleanLines.length === 0) return;
+
+      const newEntries = cleanLines.map(line => ({
+        timestamp: new Date().toISOString(),
+        tabName,
+        message: line
+      }));
+
+      set(state => ({
+        runtimeLogs: [...state.runtimeLogs, ...newEntries].slice(-500)
+      }));
+    }
+  };
+});
