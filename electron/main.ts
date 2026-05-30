@@ -122,7 +122,7 @@ ipcMain.handle('layout:load', async () => {
   } catch (error) {
     console.error('Failed to load layout:', error);
   }
-  return { activeWorkspaceId: 'tm4', sidebarWidth: 210, activeTerminalTabId: null };
+  return { activeWorkspaceId: 'tm4', sidebarWidth: 210, activeTerminalTabId: null, terminalWidthPercent: 50, logsHeightPercent: 22 };
 });
 
 ipcMain.handle('layout:save', async (_event, layout: any) => {

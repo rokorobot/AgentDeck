@@ -97,6 +97,8 @@ interface WorkspaceStore {
   workspaceObservability: Record<string, WorkspaceObservability>;
   managedProcesses: ManagedProcess[];
   runtimeLogs: { timestamp: string; tabName: string; message: string }[];
+  terminalWidthPercent: number;
+  logsHeightPercent: number;
 
   init(): Promise<void>;
   setActiveWorkspace(id: string): Promise<void>;
@@ -117,6 +119,7 @@ interface WorkspaceStore {
   restartManagedProcess(runId: string): Promise<void>;
   openWorkspaceInIDE(ide: string): Promise<void>;
   addRuntimeLog(terminalId: string, data: string): void;
+  updatePanelDimensions(terminalWidth: number, logsHeight: number): Promise<void>;
 }
 
 const terminalLineBuffers: Record<string, string> = {};
@@ -140,6 +143,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     workspaceObservability: {},
     managedProcesses: [],
     runtimeLogs: [],
+    terminalWidthPercent: 50,
+    logsHeightPercent: 22,
 
     init: async () => {
       // 1. Load layout configs and logs
@@ -174,6 +179,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         sidebarWidth: savedLayout.sidebarWidth || 210,
         systemLogs: savedLogs,
         managedProcesses: initialProcesses,
+        terminalWidthPercent: savedLayout.terminalWidthPercent !== undefined ? savedLayout.terminalWidthPercent : 50,
+        logsHeightPercent: savedLayout.logsHeightPercent !== undefined ? savedLayout.logsHeightPercent : 22,
       });
 
       // 4. Set active workspace scope
@@ -277,6 +284,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         sidebarWidth: get().sidebarWidth,
         activeTerminalTabId: get().activeTerminalTabId,
         workspacePaths: get().workspacePaths,
+        terminalWidthPercent: get().terminalWidthPercent,
+        logsHeightPercent: get().logsHeightPercent,
       });
 
       await get().addSystemLog(`Scope workspace switched to ${workspace.name}`, 'info');
@@ -291,6 +300,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         sidebarWidth: width,
         activeTerminalTabId: get().activeTerminalTabId,
         workspacePaths: get().workspacePaths,
+        terminalWidthPercent: get().terminalWidthPercent,
+        logsHeightPercent: get().logsHeightPercent,
       });
     },
 
@@ -659,6 +670,23 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       set(state => ({
         runtimeLogs: [...state.runtimeLogs, ...newEntries].slice(-500)
       }));
+    },
+
+    updatePanelDimensions: async (terminalWidth: number, logsHeight: number) => {
+      set({
+        terminalWidthPercent: terminalWidth,
+        logsHeightPercent: logsHeight,
+      });
+
+      const activeWorkspace = get().activeWorkspace;
+      await window.api.layout.save({
+        activeWorkspaceId: activeWorkspace ? activeWorkspace.id : 'tm4',
+        sidebarWidth: get().sidebarWidth,
+        activeTerminalTabId: get().activeTerminalTabId,
+        workspacePaths: get().workspacePaths,
+        terminalWidthPercent: terminalWidth,
+        logsHeightPercent: logsHeight,
+      });
     }
   };
 });

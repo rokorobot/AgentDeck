@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useWorkspaceStore } from './store/workspaceStore';
 import { Sidebar } from './components/Sidebar';
 import { TerminalPanel } from './components/TerminalPanel';
@@ -21,13 +21,105 @@ export const App: React.FC = () => {
     managedProcesses,
     stopManagedProcess,
     restartManagedProcess,
-    openWorkspaceInIDE
+    openWorkspaceInIDE,
+    terminalWidthPercent,
+    logsHeightPercent,
+    updatePanelDimensions
   } = useWorkspaceStore();
 
   const [currentTab, setCurrentTab] = useState('terminals');
+  const [localTerminalWidth, setLocalTerminalWidth] = useState(terminalWidthPercent);
+  const [localLogsHeight, setLocalLogsHeight] = useState(logsHeightPercent);
+
+  const localTerminalWidthRef = useRef(terminalWidthPercent);
+  const localLogsHeightRef = useRef(logsHeightPercent);
+
+  useEffect(() => {
+    setLocalTerminalWidth(terminalWidthPercent);
+    localTerminalWidthRef.current = terminalWidthPercent;
+  }, [terminalWidthPercent]);
+
+  useEffect(() => {
+    setLocalLogsHeight(logsHeightPercent);
+    localLogsHeightRef.current = logsHeightPercent;
+  }, [logsHeightPercent]);
+
+  const horizontalContainerRef = useRef<HTMLDivElement | null>(null);
+  const verticalContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const isDraggingHorizRef = useRef(false);
+  const isDraggingVertRef = useRef(false);
+
+  // Horizontal Dragging
+  const handleHorizontalMouseMove = (e: MouseEvent) => {
+    if (!isDraggingHorizRef.current || !horizontalContainerRef.current) return;
+    const rect = horizontalContainerRef.current.getBoundingClientRect();
+    const percent = ((e.clientX - rect.left) / rect.width) * 100;
+    if (percent >= 20 && percent <= 80) {
+      setLocalTerminalWidth(percent);
+      localTerminalWidthRef.current = percent;
+    }
+  };
+
+  const stopHorizontalDrag = () => {
+    isDraggingHorizRef.current = false;
+    document.removeEventListener('mousemove', handleHorizontalMouseMove);
+    document.removeEventListener('mouseup', stopHorizontalDrag);
+    updatePanelDimensions(localTerminalWidthRef.current, localLogsHeightRef.current);
+  };
+
+  const startHorizontalDrag = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isDraggingHorizRef.current = true;
+    document.addEventListener('mousemove', handleHorizontalMouseMove);
+    document.addEventListener('mouseup', stopHorizontalDrag);
+  };
+
+  // Vertical Dragging
+  const handleVerticalMouseMove = (e: MouseEvent) => {
+    if (!isDraggingVertRef.current || !verticalContainerRef.current) return;
+    const rect = verticalContainerRef.current.getBoundingClientRect();
+    const percent = ((rect.bottom - e.clientY) / rect.height) * 100;
+    if (percent >= 8 && percent <= 55) {
+      setLocalLogsHeight(percent);
+      localLogsHeightRef.current = percent;
+    }
+  };
+
+  const stopVerticalDrag = () => {
+    isDraggingVertRef.current = false;
+    document.removeEventListener('mousemove', handleVerticalMouseMove);
+    document.removeEventListener('mouseup', stopVerticalDrag);
+    updatePanelDimensions(localTerminalWidthRef.current, localLogsHeightRef.current);
+  };
+
+  const startVerticalDrag = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isDraggingVertRef.current = true;
+    document.addEventListener('mousemove', handleVerticalMouseMove);
+    document.addEventListener('mouseup', stopVerticalDrag);
+  };
+
+  const resetHorizontal = () => {
+    setLocalTerminalWidth(50);
+    localTerminalWidthRef.current = 50;
+    updatePanelDimensions(50, localLogsHeightRef.current);
+  };
+
+  const resetVertical = () => {
+    setLocalLogsHeight(22);
+    localLogsHeightRef.current = 22;
+    updatePanelDimensions(localTerminalWidthRef.current, 22);
+  };
 
   useEffect(() => {
     init();
+    return () => {
+      document.removeEventListener('mousemove', handleHorizontalMouseMove);
+      document.removeEventListener('mouseup', stopHorizontalDrag);
+      document.removeEventListener('mousemove', handleVerticalMouseMove);
+      document.removeEventListener('mouseup', stopVerticalDrag);
+    };
   }, []);
 
   const activeWorkspaceObs = workspaceObservability[activeWorkspace?.id || ''] || {
@@ -180,19 +272,26 @@ export const App: React.FC = () => {
         </div>
 
         {/* Dynamic Center Panels view */}
-        <div className="flex-1 overflow-hidden p-3 min-h-0 flex flex-col gap-3">
+        <div ref={verticalContainerRef} className="flex-1 overflow-hidden p-3 min-h-0 flex flex-col gap-0 select-none">
           {currentTab === 'logs' ? (
             <div className="flex-1 min-h-0">
               <LogsPanel />
             </div>
           ) : (
-            // High Density Split layout: 50/50 columns + persistent logs bottom
+            // High Density Resizable Split layout
             <>
               {/* Middle Grid Section */}
-              <div className="flex-1 flex flex-row gap-3 min-h-0">
+              <div 
+                ref={horizontalContainerRef} 
+                className="flex flex-row min-h-0 w-full"
+                style={{ height: `${100 - localLogsHeight}%` }}
+              >
                 
                 {/* Left Half: Terminal Tabs container */}
-                <div className="flex-1 flex flex-col bg-[#111827]/40 border border-[#1F2937] rounded overflow-hidden min-w-0">
+                <div 
+                  className="flex flex-col bg-[#111827]/40 border border-[#1F2937] rounded overflow-hidden min-w-0 h-full"
+                  style={{ width: `${localTerminalWidth}%` }}
+                >
                   
                   {/* Tab row */}
                   <div className="bg-[#111827] border-b border-[#1F2937] px-2 py-1 flex items-center justify-between">
@@ -251,15 +350,41 @@ export const App: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Horizontal Resize Handle */}
+                <div 
+                  onMouseDown={startHorizontalDrag}
+                  onDoubleClick={resetHorizontal}
+                  className="w-1.5 hover:w-2 h-full bg-[#1F2937]/45 hover:bg-blue-500/50 cursor-col-resize transition-all rounded shrink-0 flex items-center justify-center group mx-1.5"
+                  title="Double-click to reset to 50%"
+                >
+                  <div className="w-0.5 h-12 bg-gray-700/60 group-hover:bg-blue-300 rounded" />
+                </div>
+
                 {/* Right Half: Sandboxed Visual Preview */}
-                <div className="flex-1 flex flex-col min-w-0">
+                <div 
+                  className="flex flex-col min-w-0 h-full"
+                  style={{ width: `${100 - localTerminalWidth}%` }}
+                >
                   <BrowserPreview />
                 </div>
 
               </div>
 
+              {/* Vertical Resize Handle */}
+              <div 
+                onMouseDown={startVerticalDrag}
+                onDoubleClick={resetVertical}
+                className="h-1.5 hover:h-2 w-full bg-[#1F2937]/45 hover:bg-blue-500/50 cursor-row-resize transition-all rounded shrink-0 flex items-center justify-center group my-1.5"
+                title="Double-click to reset to 22%"
+              >
+                <div className="h-0.5 w-12 bg-gray-700/60 group-hover:bg-blue-300 rounded" />
+              </div>
+
               {/* Bottom Section: Persistent Logs */}
-              <div className="h-[180px] shrink-0 min-h-[120px]">
+              <div 
+                className="shrink-0 min-h-[50px] w-full"
+                style={{ height: `${localLogsHeight}%` }}
+              >
                 <LogsPanel />
               </div>
             </>
