@@ -4,7 +4,7 @@
 
 [**Release Notes (v0.6.0)**](docs/release-notes-v0.6.md)
 
-![AgentDeck Operator Console Dashboard](docs/screenshots/dashboard-active.png)
+![AgentDeck Operator Console Dashboard](docs/screenshots/dashboard-active-v0.6.png)
 
 AgentDeck is a desktop workspace orchestrator that combines terminals, local AI services, browser previews, runtime observability, and project control into a single operator console. 
 
