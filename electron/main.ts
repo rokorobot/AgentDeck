@@ -482,3 +482,220 @@ ipcMain.handle('ide:open', async (_event, { ide, folderPath }) => {
     });
   });
 });
+
+// Helper to get evaluation directory
+function getEvalsDir(rootPath: string | null, presetId: string): string {
+  if (rootPath && fs.existsSync(rootPath)) {
+    return path.join(rootPath, '.agentdeck', 'evals');
+  } else {
+    return path.join(DATA_DIR, 'presets-evals', presetId);
+  }
+}
+
+// IPC Handlers for Evals Persistence
+ipcMain.handle('evals:load-data', async (_event, { rootPath, presetId }) => {
+  try {
+    const evalsDir = getEvalsDir(rootPath, presetId);
+    const failuresDir = path.join(evalsDir, 'failures');
+    
+    const benchmarksPath = path.join(evalsDir, 'benchmarks.json');
+    const runsPath = path.join(evalsDir, 'regression_runs.json');
+
+    let benchmarks: any[] = [];
+    let runs: any[] = [];
+    let failures: any[] = [];
+
+    // Load Benchmarks
+    if (fs.existsSync(benchmarksPath)) {
+      benchmarks = JSON.parse(fs.readFileSync(benchmarksPath, 'utf-8'));
+    } else {
+      // Default Mock Presets
+      if (presetId === 'sound-machina') {
+        benchmarks = [
+          {
+            id: 'sound-machina-prompt-quality',
+            name: 'Sound Machina Prompt Quality',
+            description: 'Evaluates quality of generated music prompts against core aesthetic criteria.',
+            criteria: ['Melodic structure', 'Novelty', 'Genre consistency', 'Production usability'],
+            baselineScore: 0.87,
+            goldStandardsCount: 15
+          }
+        ];
+      } else if (presetId === 'tm4') {
+        benchmarks = [
+          {
+            id: 'tm4-governance',
+            name: 'TM4 Studio Governance',
+            description: 'Assesses compliance, artifact integrity, and report completeness of system runs.',
+            criteria: ['Report Completeness', 'Governance Compliance', 'Artifact Integrity'],
+            baselineScore: 0.97,
+            goldStandardsCount: 20
+          }
+        ];
+      } else {
+        // Generic defaults
+        benchmarks = [
+          {
+            id: `${presetId}-evals`,
+            name: `${presetId} Standard Evaluation`,
+            description: 'Default benchmark suite for quality and response integrity.',
+            criteria: ['Response accuracy', 'Style alignment', 'Performance'],
+            baselineScore: 0.80,
+            goldStandardsCount: 5
+          }
+        ];
+      }
+    }
+
+    // Load Regression Runs
+    if (fs.existsSync(runsPath)) {
+      runs = JSON.parse(fs.readFileSync(runsPath, 'utf-8'));
+    } else {
+      // Demo run history
+      if (presetId === 'sound-machina') {
+        runs = [
+          {
+            id: 'run-sound-machina-1',
+            benchmarkId: 'sound-machina-prompt-quality',
+            timestamp: new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
+            score: 0.88,
+            baselineScore: 0.87,
+            diff: 0.01,
+            status: 'pass',
+            failuresCount: 0,
+            triggerContext: 'Added tempo constraints to Prompt Engine',
+            isSimulated: true,
+            isApproved: true
+          },
+          {
+            id: 'run-sound-machina-2',
+            benchmarkId: 'sound-machina-prompt-quality',
+            timestamp: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
+            score: 0.82,
+            baselineScore: 0.87,
+            diff: -0.05,
+            status: 'regression_detected',
+            failuresCount: 1,
+            triggerContext: 'Prompt Engine Update (v0.6)',
+            isSimulated: true,
+            isApproved: false
+          }
+        ];
+      } else if (presetId === 'tm4') {
+        runs = [
+          {
+            id: 'run-tm4-1',
+            benchmarkId: 'tm4-governance',
+            timestamp: new Date(Date.now() - 48 * 3600 * 1000).toISOString(),
+            score: 0.98,
+            baselineScore: 0.97,
+            diff: 0.01,
+            status: 'pass',
+            failuresCount: 0,
+            triggerContext: 'Initial baseline evaluation pass',
+            isSimulated: true,
+            isApproved: true
+          }
+        ];
+      }
+    }
+
+    // Load Failures
+    if (fs.existsSync(failuresDir)) {
+      const files = fs.readdirSync(failuresDir);
+      for (const file of files) {
+        if (file.endsWith('.json')) {
+          try {
+            const fileData = fs.readFileSync(path.join(failuresDir, file), 'utf-8');
+            failures.push(JSON.parse(fileData));
+          } catch (e) {
+            console.error('Error reading failure file:', file, e);
+          }
+        }
+      }
+    } else {
+      // Demo failures
+      if (presetId === 'sound-machina') {
+        failures = [
+          {
+            id: 'fail-sound-machina-1',
+            benchmarkId: 'sound-machina-prompt-quality',
+            prompt: 'Coldwave track',
+            expected: 'Generated track has dark synth pads and a prominent 80s drum beat.',
+            actual: 'Generated EDM clichés with bright trance leads and 128 bpm drop.',
+            failureDescription: 'Generated EDM clichés instead of coldwave elements.',
+            resolution: 'Added explicit genre constraints and reference artists to the Coldwave prompt template.',
+            resolved: true,
+            timestamp: new Date(Date.now() - 2 * 3600 * 1000).toISOString()
+          }
+        ];
+      }
+    }
+
+    return { benchmarks, runs, failures };
+  } catch (error) {
+    console.error('Failed to load evals data:', error);
+    return { benchmarks: [], runs: [], failures: [] };
+  }
+});
+
+ipcMain.handle('evals:save-benchmarks', async (_event, { rootPath, presetId, benchmarks }) => {
+  try {
+    const evalsDir = getEvalsDir(rootPath, presetId);
+    if (!fs.existsSync(evalsDir)) {
+      fs.mkdirSync(evalsDir, { recursive: true });
+    }
+    const benchmarksPath = path.join(evalsDir, 'benchmarks.json');
+    fs.writeFileSync(benchmarksPath, JSON.stringify(benchmarks, null, 2), 'utf-8');
+    return true;
+  } catch (error) {
+    console.error('Failed to save benchmarks:', error);
+    return false;
+  }
+});
+
+ipcMain.handle('evals:save-failure', async (_event, { rootPath, presetId, failure }) => {
+  try {
+    const evalsDir = getEvalsDir(rootPath, presetId);
+    const failuresDir = path.join(evalsDir, 'failures');
+    if (!fs.existsSync(failuresDir)) {
+      fs.mkdirSync(failuresDir, { recursive: true });
+    }
+    const filePath = path.join(failuresDir, `failure-${failure.id}.json`);
+    fs.writeFileSync(filePath, JSON.stringify(failure, null, 2), 'utf-8');
+    return true;
+  } catch (error) {
+    console.error('Failed to save failure case:', error);
+    return false;
+  }
+});
+
+ipcMain.handle('evals:delete-failure', async (_event, { rootPath, presetId, failureId }) => {
+  try {
+    const evalsDir = getEvalsDir(rootPath, presetId);
+    const filePath = path.join(evalsDir, 'failures', `failure-${failureId}.json`);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('Failed to delete failure case:', error);
+    return false;
+  }
+});
+
+ipcMain.handle('evals:save-regression-history', async (_event, { rootPath, presetId, history }) => {
+  try {
+    const evalsDir = getEvalsDir(rootPath, presetId);
+    if (!fs.existsSync(evalsDir)) {
+      fs.mkdirSync(evalsDir, { recursive: true });
+    }
+    const runsPath = path.join(evalsDir, 'regression_runs.json');
+    fs.writeFileSync(runsPath, JSON.stringify(history, null, 2), 'utf-8');
+    return true;
+  } catch (error) {
+    console.error('Failed to save regression runs history:', error);
+    return false;
+  }
+});

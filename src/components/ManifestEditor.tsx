@@ -12,6 +12,8 @@ export const ManifestEditor: React.FC = () => {
   const [services, setServices] = useState<WorkspaceService[]>([]);
   const [quickActions, setQuickActions] = useState<WorkspaceQuickAction[]>([]);
   const [terminals, setTerminals] = useState<TerminalPreset[]>([]);
+  const [evalScript, setEvalScript] = useState('');
+  const [evalThreshold, setEvalThreshold] = useState(0.7);
 
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [saveStatus, setSaveStatus] = useState<{ success?: boolean; message?: string } | null>(null);
@@ -26,6 +28,8 @@ export const ManifestEditor: React.FC = () => {
       setServices(activeWorkspace.services || []);
       setQuickActions(activeWorkspace.quickActions || []);
       setTerminals(activeWorkspace.terminals || []);
+      setEvalScript((activeWorkspace as any).evals?.script || '');
+      setEvalThreshold((activeWorkspace as any).evals?.baselineThreshold || 0.7);
       setValidationErrors([]);
       setSaveStatus(null);
     }
@@ -118,8 +122,12 @@ export const ManifestEditor: React.FC = () => {
       },
       services,
       quickActions,
-      terminals
-    };
+      terminals,
+      evals: {
+        script: evalScript.trim() || undefined,
+        baselineThreshold: Number(evalThreshold) || 0.7
+      }
+    } as any;
 
     // Frontend validation
     const valResult = validateManifest(updatedConfig);
@@ -246,6 +254,34 @@ export const ManifestEditor: React.FC = () => {
                     value={previewUrl}
                     disabled={isReadOnly}
                     onChange={(e) => setPreviewUrl(e.target.value)}
+                    className="w-full bg-[#0B0F14] border border-gray-800 focus:border-blue-500 focus:outline-none text-xs px-3 py-2 text-gray-300 rounded font-mono disabled:opacity-50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-gray-500 font-mono uppercase font-bold tracking-wider mb-1">
+                    Evaluation Script (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={evalScript}
+                    disabled={isReadOnly}
+                    onChange={(e) => setEvalScript(e.target.value)}
+                    placeholder="e.g. npm run test:evals"
+                    className="w-full bg-[#0B0F14] border border-gray-800 focus:border-blue-500 focus:outline-none text-xs px-3 py-2 text-gray-300 rounded font-mono disabled:opacity-50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-gray-500 font-mono uppercase font-bold tracking-wider mb-1">
+                    Baseline Failure Threshold
+                  </label>
+                  <input
+                    type="number"
+                    step="0.05"
+                    min="0"
+                    max="1"
+                    value={evalThreshold}
+                    disabled={isReadOnly}
+                    onChange={(e) => setEvalThreshold(parseFloat(e.target.value) || 0.7)}
                     className="w-full bg-[#0B0F14] border border-gray-800 focus:border-blue-500 focus:outline-none text-xs px-3 py-2 text-gray-300 rounded font-mono disabled:opacity-50"
                   />
                 </div>

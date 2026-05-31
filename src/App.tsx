@@ -7,6 +7,8 @@ import { LogsPanel } from './components/LogsPanel';
 import { SafetyDialog } from './components/SafetyDialog';
 import { ManifestEditor } from './components/ManifestEditor';
 import { NewWorkspaceWizard } from './components/NewWorkspaceWizard';
+import { RuntimeDashboardView } from './components/RuntimeDashboardView';
+import { EvaluationsView } from './components/EvaluationsView';
 import { X, Play, Square, RefreshCw, FolderOpen, Code, ExternalLink, Sliders } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -30,10 +32,12 @@ export const App: React.FC = () => {
     startManagedProcess,
     startAllServices,
     stopAllServices,
-    restartAllServices
+    restartAllServices,
+    approvalQueue
   } = useWorkspaceStore();
 
   const [currentTab, setCurrentTab] = useState('terminals');
+  const [evalsSubTab, setEvalsSubTab] = useState('benchmarks');
   const [localTerminalWidth, setLocalTerminalWidth] = useState(terminalWidthPercent);
   const [localLogsHeight, setLocalLogsHeight] = useState(logsHeightPercent);
 
@@ -154,6 +158,20 @@ export const App: React.FC = () => {
               <span className="text-gray-500 uppercase text-[9px] tracking-wider font-semibold">Scope:</span>
               <span className="text-blue-400 font-bold uppercase">{activeWorkspace?.name || 'Loading'}</span>
             </div>
+
+            {/* Approvals Badge */}
+            {approvalQueue.length > 0 && (
+              <button
+                onClick={() => {
+                  setEvalsSubTab('approvals');
+                  setCurrentTab('evaluations');
+                }}
+                className="flex items-center gap-1.5 bg-amber-950/40 text-amber-400 hover:bg-amber-950/60 border border-amber-900/40 px-2.5 py-1 rounded shrink-0 font-mono text-xs animate-pulse transition-all hover:scale-[1.02]"
+              >
+                <span className="w-1.5 h-1.5 bg-amber-500 rounded-full shrink-0" />
+                <span className="text-amber-500 font-bold uppercase">APPROVALS ({approvalQueue.length})</span>
+              </button>
+            )}
 
             {/* API Observability Check */}
             <div className="flex items-center gap-1.5 bg-[#111827] px-2.5 py-1 rounded border border-[#1f2937] shrink-0 font-mono text-xs">
@@ -384,9 +402,13 @@ export const App: React.FC = () => {
 
         {/* Dynamic Center Panels view */}
         <div ref={verticalContainerRef} className="flex-1 overflow-hidden p-3 min-h-0 flex flex-col gap-0 select-none">
-          {currentTab === 'logs' ? (
+          {currentTab === 'dashboard' ? (
             <div className="flex-1 min-h-0">
-              <LogsPanel />
+              <RuntimeDashboardView />
+            </div>
+          ) : currentTab === 'evaluations' ? (
+            <div className="flex-1 min-h-0">
+              <EvaluationsView key={`${activeWorkspace?.id}-${evalsSubTab}`} initialSubTab={evalsSubTab} />
             </div>
           ) : currentTab === 'editor' ? (
             <div className="flex-1 min-h-0">

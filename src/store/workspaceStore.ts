@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { Workspace, ManagedProcess } from '../types/workspace';
 import { checkCommandSafety } from '../lib/commandSafety';
+import { BenchmarkDefinition, RegressionRun, ApprovalQueueItem, FailureCase } from '../types/evals';
 
 // Extend window object types for TypeScript safety
 declare global {
@@ -59,6 +60,13 @@ declare global {
       };
       safety: {
         approveCommand(command: string): Promise<boolean>;
+      };
+      evals: {
+        loadData(rootPath: string | null, presetId: string): Promise<{ benchmarks: any[]; runs: any[]; failures: any[] }>;
+        saveBenchmarks(rootPath: string | null, presetId: string, benchmarks: any[]): Promise<boolean>;
+        saveFailure(rootPath: string | null, presetId: string, failure: any): Promise<boolean>;
+        deleteFailure(rootPath: string | null, presetId: string, failureId: string): Promise<boolean>;
+        saveRegressionHistory(rootPath: string | null, presetId: string, history: any[]): Promise<boolean>;
       };
     };
   }
@@ -134,6 +142,20 @@ interface WorkspaceStore {
   setWizardState(show: boolean, path?: string | null): void;
   initializeWorkspace(folderPath: string, name: string, previewUrl: string, templateId: string): Promise<void>;
   saveActiveWorkspace(config: any): Promise<{ success: boolean; error?: string }>;
+
+  // Evaluations Center State
+  benchmarks: BenchmarkDefinition[];
+  regressionRuns: RegressionRun[];
+  approvalQueue: ApprovalQueueItem[];
+  failures: FailureCase[];
+  isRunningBenchmark: boolean;
+  loadEvalsData(): Promise<void>;
+  runRegressionSet(benchmarkId: string): Promise<void>;
+  approveRun(approvalId: string): Promise<void>;
+  rejectRun(approvalId: string): Promise<void>;
+  promoteToBaseline(benchmarkId: string, runId: string): Promise<void>;
+  saveFailureCase(failure: FailureCase): Promise<void>;
+  deleteFailureCase(failureId: string): Promise<void>;
 }
 
 const terminalLineBuffers: Record<string, string> = {};
@@ -162,6 +184,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     previewUrlOverride: null,
     showWizard: false,
     wizardPath: null,
+    benchmarks: [],
+    regressionRuns: [],
+    approvalQueue: [],
+    failures: [],
+    isRunningBenchmark: false,
 
     init: async () => {
       // 1. Load layout configs and logs
@@ -307,6 +334,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       });
 
       await get().addSystemLog(`Scope workspace switched to ${workspace.name}`, 'info');
+      await get().loadEvalsData();
     },
 
     setSidebarWidth: async (width: number) => {
@@ -868,6 +896,275 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       } catch (err: any) {
         console.error('Failed to save workspace config:', err);
         return { success: false, error: err.message || 'Error occurred.' };
+      }
+    },
+
+    loadEvalsData: async () => {
+      const activeWorkspace = get().activeWorkspace;
+      if (!activeWorkspace) return;
+
+      try {
+        const rootPath = activeWorkspace.rootPath || null;
+        const presetId = activeWorkspace.id;
+        
+        const data = await window.api.evals.loadData(rootPath, presetId);
+        
+        // Populate approval queue dynamically from the runs
+        const openApprovals: ApprovalQueueItem[] = [];
+        for (const run of data.runs) {
+          if (!run.isApproved && run.status === 'regression_detected') {
+            openApprovals.push({
+              id: `app-${run.id}`,
+              benchmarkId: run.benchmarkId,
+              runId: run.id,
+              title: run.triggerContext || 'Evals Run Update',
+              previousScore: run.baselineScore,
+              currentScore: run.score,
+              failuresCount: run.failuresCount,
+              status: 'open',
+              submittedAt: run.timestamp
+            });
+          }
+        }
+
+        set({
+          benchmarks: data.benchmarks || [],
+          regressionRuns: data.runs || [],
+          failures: data.failures || [],
+          approvalQueue: openApprovals
+        });
+      } catch (err) {
+        console.error('Failed to load evals data in store:', err);
+      }
+    },
+
+    runRegressionSet: async (benchmarkId: string) => {
+      const activeWorkspace = get().activeWorkspace;
+      if (!activeWorkspace) return;
+
+      const benchmark = get().benchmarks.find(b => b.id === benchmarkId);
+      if (!benchmark) return;
+
+      set({ isRunningBenchmark: true });
+      await get().addSystemLog(`Starting regression test run for benchmark "${benchmark.name}"...`, 'info');
+
+      // Simulate a delay of 2.5 seconds
+      await new Promise(resolve => setTimeout(resolve, 2500));
+
+      const isRegression = Math.random() > 0.4;
+      const newScore = isRegression 
+        ? parseFloat((benchmark.baselineScore - 0.03 - Math.random() * 0.05).toFixed(2))
+        : parseFloat((benchmark.baselineScore + 0.01 + Math.random() * 0.02).toFixed(2));
+      
+      const diff = parseFloat((newScore - benchmark.baselineScore).toFixed(2));
+      const status = diff < 0 ? 'regression_detected' : 'pass';
+      
+      const runId = `run-${Date.now()}`;
+      const timestamp = new Date().toISOString();
+
+      let failuresCount = 0;
+      let newFailure: FailureCase | null = null;
+
+      if (status === 'regression_detected') {
+        failuresCount = 1;
+        if (activeWorkspace.id === 'sound-machina') {
+          newFailure = {
+            id: `fail-${Date.now()}`,
+            benchmarkId,
+            prompt: 'Ambient synth drone',
+            expected: 'Low-frequency drone with slow resonant sweep and wide stereo field.',
+            actual: 'High-pitch buzzing sound with sharp digital distortion.',
+            failureDescription: 'Digital clipping and incorrect frequency balance.',
+            resolved: false,
+            timestamp
+          };
+        } else if (activeWorkspace.id === 'tm4') {
+          newFailure = {
+            id: `fail-${Date.now()}`,
+            benchmarkId,
+            prompt: 'System Run Architecture Validation',
+            expected: 'All output files conform to schemaVersion v2 layout.',
+            actual: 'Failed validating preset blocks. Missing schema version parameters.',
+            failureDescription: 'Schema validation error on project manifest parsing.',
+            resolved: false,
+            timestamp
+          };
+        } else {
+          newFailure = {
+            id: `fail-${Date.now()}`,
+            benchmarkId,
+            prompt: 'Standard test input prompt',
+            expected: 'Response contains appropriate context values.',
+            actual: 'Null or empty response returned.',
+            failureDescription: 'Null response execution fault.',
+            resolved: false,
+            timestamp
+          };
+        }
+      }
+
+      const newRun: RegressionRun = {
+        id: runId,
+        benchmarkId,
+        timestamp,
+        score: newScore,
+        baselineScore: benchmark.baselineScore,
+        diff,
+        status,
+        failuresCount,
+        triggerContext: `Manual Triggered Run`,
+        isSimulated: true,
+        isApproved: false
+      };
+
+      const updatedRuns = [newRun, ...get().regressionRuns];
+      const rootPath = activeWorkspace.rootPath || null;
+      const presetId = activeWorkspace.id;
+
+      await window.api.evals.saveRegressionHistory(rootPath, presetId, updatedRuns);
+
+      if (newFailure) {
+        await window.api.evals.saveFailure(rootPath, presetId, newFailure);
+        set(state => ({ failures: [newFailure!, ...state.failures] }));
+      }
+
+      let updatedQueue = [...get().approvalQueue];
+      if (status === 'regression_detected' || diff < 0) {
+        const queueItem: ApprovalQueueItem = {
+          id: `app-${runId}`,
+          benchmarkId,
+          runId,
+          title: `Prompt Engine Update (Run #${runId.slice(-4)})`,
+          previousScore: benchmark.baselineScore,
+          currentScore: newScore,
+          failuresCount,
+          status: 'open',
+          submittedAt: timestamp
+        };
+        updatedQueue = [queueItem, ...updatedQueue];
+      }
+
+      set({
+        regressionRuns: updatedRuns,
+        approvalQueue: updatedQueue,
+        isRunningBenchmark: false
+      });
+
+      if (status === 'pass') {
+        await get().addSystemLog(`Regression run PASSED with score ${newScore} (baseline ${benchmark.baselineScore})`, 'success');
+      } else {
+        await get().addSystemLog(`REGRESSION DETECTED: Score dropped to ${newScore} (baseline ${benchmark.baselineScore}, diff ${diff})`, 'error');
+      }
+    },
+
+    approveRun: async (approvalId: string) => {
+      const activeWorkspace = get().activeWorkspace;
+      if (!activeWorkspace) return;
+
+      const queueItem = get().approvalQueue.find(a => a.id === approvalId);
+      if (!queueItem) return;
+
+      const updatedQueue = get().approvalQueue.map(item => 
+        item.id === approvalId ? { ...item, status: 'approved' as const } : item
+      );
+
+      const updatedRuns = get().regressionRuns.map(run => 
+        run.id === queueItem.runId ? { ...run, isApproved: true } : run
+      );
+
+      const rootPath = activeWorkspace.rootPath || null;
+      const presetId = activeWorkspace.id;
+
+      await window.api.evals.saveRegressionHistory(rootPath, presetId, updatedRuns);
+
+      set({
+        approvalQueue: updatedQueue.filter(item => item.status === 'open'),
+        regressionRuns: updatedRuns
+      });
+
+      await get().addSystemLog(`Evals run ${queueItem.runId} marked as APPROVED`, 'success');
+    },
+
+    rejectRun: async (approvalId: string) => {
+      const activeWorkspace = get().activeWorkspace;
+      if (!activeWorkspace) return;
+
+      const queueItem = get().approvalQueue.find(a => a.id === approvalId);
+      if (!queueItem) return;
+
+      const updatedQueue = get().approvalQueue.map(item => 
+        item.id === approvalId ? { ...item, status: 'rejected' as const } : item
+      );
+
+      const updatedRuns = get().regressionRuns.map(run => 
+        run.id === queueItem.runId ? { ...run, isApproved: false } : run
+      );
+
+      const rootPath = activeWorkspace.rootPath || null;
+      const presetId = activeWorkspace.id;
+
+      await window.api.evals.saveRegressionHistory(rootPath, presetId, updatedRuns);
+
+      set({
+        approvalQueue: updatedQueue.filter(item => item.status === 'open'),
+        regressionRuns: updatedRuns
+      });
+
+      await get().addSystemLog(`Evals run ${queueItem.runId} marked as REJECTED`, 'warning');
+    },
+
+    promoteToBaseline: async (benchmarkId: string, runId: string) => {
+      const activeWorkspace = get().activeWorkspace;
+      if (!activeWorkspace) return;
+
+      const run = get().regressionRuns.find(r => r.id === runId);
+      if (!run) return;
+
+      const updatedBenchmarks = get().benchmarks.map(b => 
+        b.id === benchmarkId ? { ...b, baselineScore: run.score } : b
+      );
+
+      const rootPath = activeWorkspace.rootPath || null;
+      const presetId = activeWorkspace.id;
+
+      await window.api.evals.saveBenchmarks(rootPath, presetId, updatedBenchmarks);
+
+      set({ benchmarks: updatedBenchmarks });
+      await get().addSystemLog(`Promoted score ${run.score} to baseline for benchmark ${benchmarkId}`, 'success');
+    },
+
+    saveFailureCase: async (failure: FailureCase) => {
+      const activeWorkspace = get().activeWorkspace;
+      if (!activeWorkspace) return;
+
+      const rootPath = activeWorkspace.rootPath || null;
+      const presetId = activeWorkspace.id;
+
+      const success = await window.api.evals.saveFailure(rootPath, presetId, failure);
+      if (success) {
+        const exists = get().failures.some(f => f.id === failure.id);
+        const updatedFailures = exists
+          ? get().failures.map(f => f.id === failure.id ? failure : f)
+          : [failure, ...get().failures];
+        
+        set({ failures: updatedFailures });
+        await get().addSystemLog(`Failure case ${failure.id} saved successfully`, 'success');
+      }
+    },
+
+    deleteFailureCase: async (failureId: string) => {
+      const activeWorkspace = get().activeWorkspace;
+      if (!activeWorkspace) return;
+
+      const rootPath = activeWorkspace.rootPath || null;
+      const presetId = activeWorkspace.id;
+
+      const success = await window.api.evals.deleteFailure(rootPath, presetId, failureId);
+      if (success) {
+        set(state => ({
+          failures: state.failures.filter(f => f.id !== failureId)
+        }));
+        await get().addSystemLog(`Failure case ${failureId} deleted`, 'info');
       }
     }
   };

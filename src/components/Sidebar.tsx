@@ -216,16 +216,27 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setCurrentTab }) =
               <Terminal className="w-4 h-4" />
               <span>Shell Console</span>
             </button>
-             <button
-              onClick={() => setCurrentTab('logs')}
+            <button
+              onClick={() => setCurrentTab('dashboard')}
               className={`w-full text-left px-3 py-2 rounded flex items-center gap-2.5 text-sm transition-all ${
-                currentTab === 'logs' 
+                currentTab === 'dashboard' 
                   ? 'bg-blue-950/40 text-blue-400 border-l-2 border-blue-500 font-medium' 
                   : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
               }`}
             >
               <Activity className="w-4 h-4" />
-              <span>Safety Logs</span>
+              <span>Runtime Dashboard</span>
+            </button>
+            <button
+              onClick={() => setCurrentTab('evaluations')}
+              className={`w-full text-left px-3 py-2 rounded flex items-center gap-2.5 text-sm transition-all ${
+                currentTab === 'evaluations' 
+                  ? 'bg-blue-950/40 text-blue-400 border-l-2 border-blue-500 font-medium' 
+                  : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
+              }`}
+            >
+              <Cpu className="w-4 h-4 text-purple-400" />
+              <span>Evaluations</span>
             </button>
             <button
               onClick={() => setCurrentTab('editor')}

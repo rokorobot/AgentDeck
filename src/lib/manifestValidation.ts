@@ -142,6 +142,24 @@ export function validateManifest(config: any): { valid: boolean; errors: Validat
     errors.push({ field: 'terminals', message: 'Terminals section is required' });
   }
 
+  // 5. Evals validation
+  if (config.evals) {
+    const pathPrefix = 'evals';
+    if (typeof config.evals !== 'object') {
+      errors.push({ field: pathPrefix, message: 'Evals configuration must be an object' });
+    } else {
+      if (config.evals.script !== undefined && (typeof config.evals.script !== 'string' || !config.evals.script.trim())) {
+        errors.push({ field: `${pathPrefix}.script`, message: 'Evaluation script command must be a non-empty string' });
+      }
+      if (config.evals.baselineThreshold !== undefined) {
+        const threshold = Number(config.evals.baselineThreshold);
+        if (isNaN(threshold) || threshold < 0 || threshold > 1) {
+          errors.push({ field: `${pathPrefix}.baselineThreshold`, message: 'Baseline threshold score must be a decimal value between 0.0 and 1.0' });
+        }
+      }
+    }
+  }
+
   return {
     valid: errors.length === 0,
     errors

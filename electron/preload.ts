@@ -71,5 +71,17 @@ contextBridge.exposeInMainWorld('api', {
   },
   safety: {
     approveCommand: (command: string) => ipcRenderer.invoke('safety:approve', command),
+  },
+  evals: {
+    loadData: (rootPath: string | null, presetId: string) =>
+      ipcRenderer.invoke('evals:load-data', { rootPath, presetId }),
+    saveBenchmarks: (rootPath: string | null, presetId: string, benchmarks: any[]) =>
+      ipcRenderer.invoke('evals:save-benchmarks', { rootPath, presetId, benchmarks }),
+    saveFailure: (rootPath: string | null, presetId: string, failure: any) =>
+      ipcRenderer.invoke('evals:save-failure', { rootPath, presetId, failure }),
+    deleteFailure: (rootPath: string | null, presetId: string, failureId: string) =>
+      ipcRenderer.invoke('evals:delete-failure', { rootPath, presetId, failureId }),
+    saveRegressionHistory: (rootPath: string | null, presetId: string, history: any[]) =>
+      ipcRenderer.invoke('evals:save-regression-history', { rootPath, presetId, history }),
   }
 });
