@@ -3,6 +3,7 @@ import { Workspace, ManagedProcess } from '../types/workspace';
 import { checkCommandSafety } from '../lib/commandSafety';
 import { BenchmarkDefinition, RegressionRun, ApprovalQueueItem, FailureCase, GoldStandard, JudgeDefinition, PromotionHistoryRecord, TestCaseRunResult, BenchmarkReport, BenchmarkTestCase } from '../types/evals';
 import { TimelineEvent } from '../types/timeline';
+import { GovernancePolicy, ReleaseCandidate } from '../types/governance';
 
 
 // Extend window object types for TypeScript safety
@@ -77,6 +78,11 @@ declare global {
       timeline: {
         loadEvents(rootPath: string | null, presetId: string): Promise<any[]>;
         saveEvent(rootPath: string | null, presetId: string, event: any): Promise<boolean>;
+      };
+      governance: {
+        loadData(rootPath: string | null, presetId: string): Promise<{ policies: any; releaseCandidates: any[] }>;
+        savePolicies(rootPath: string | null, presetId: string, policies: any): Promise<boolean>;
+        saveCandidates(rootPath: string | null, presetId: string, list: any[]): Promise<boolean>;
       };
     };
   }
@@ -185,7 +191,14 @@ interface WorkspaceStore {
     metadata?: any,
     severity?: TimelineEvent['severity'],
     actor?: TimelineEvent['actor']
-  ): Promise<void>;
+  ): Promise<TimelineEvent | undefined>;
+
+  // Governance State & Actions
+  governancePolicies: GovernancePolicy | null;
+  releaseCandidates: ReleaseCandidate[];
+  saveGovernancePolicies(policies: GovernancePolicy): Promise<void>;
+  createReleaseCandidate(candidate: Omit<ReleaseCandidate, 'schemaVersion' | 'timestamp' | 'status'>): Promise<void>;
+  updateReleaseCandidateStatus(id: string, status: ReleaseCandidate['status'], notes?: string): Promise<void>;
 }
 
 const terminalLineBuffers: Record<string, string> = {};
@@ -223,6 +236,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     promotions: [],
     isRunningBenchmark: false,
     timelineEvents: [],
+    governancePolicies: null,
+    releaseCandidates: [],
 
     init: async () => {
       // 1. Load layout configs and logs
@@ -993,6 +1008,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         }
 
         const timelineEvents = await window.api.timeline.loadEvents(rootPath, presetId);
+        const govData = await window.api.governance.loadData(rootPath, presetId);
 
         set({
           benchmarks: data.benchmarks || [],
@@ -1002,6 +1018,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
           judges: data.judges || [],
           promotions: data.promotions || [],
           timelineEvents: timelineEvents || [],
+          governancePolicies: govData.policies,
+          releaseCandidates: govData.releaseCandidates || [],
           approvalQueue: openApprovals
         });
       } catch (err) {
@@ -1184,7 +1202,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         await get().addSystemLog(`REGRESSION DETECTED: Score dropped to ${newScore} (baseline ${benchmark.baselineScore}, diff ${diff})`, 'error');
       }
 
-      await get().addTimelineEvent(
+      const timelineEv = await get().addTimelineEvent(
         'regression_executed',
         runId,
         `Regression run completed for ${benchmark.name}: ${newScore} (baseline: ${benchmark.baselineScore}, diff: ${diff > 0 ? '+' : ''}${diff})`,
@@ -1200,6 +1218,79 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
           runDetails: newRun
         }
       );
+
+      // Governance Release Candidate Policy Evaluation
+      const policies = get().governancePolicies;
+      if (policies) {
+        const meetsMinScore = newScore >= policies.minScore;
+        const isRegressionRun = status === 'regression_detected' || diff < 0;
+        
+        const shouldCreateRC = policies.requireApproval || !meetsMinScore || isRegressionRun;
+        
+        if (shouldCreateRC) {
+          let policyResult: ReleaseCandidate['policyResult'] = 'pass';
+          const policyReasons: string[] = [];
+          
+          if (!meetsMinScore) {
+            policyResult = 'blocked';
+            policyReasons.push(`Score ${newScore} is below governance minimum score threshold of ${policies.minScore}`);
+          }
+          
+          if (isRegressionRun && !policies.allowRegression) {
+            policyResult = 'blocked';
+            policyReasons.push(`Regression detected (${diff > 0 ? '+' : ''}${diff}) and regression is disallowed by policy`);
+          }
+          
+          if (policyResult !== 'blocked' && policies.requireApproval) {
+            policyResult = 'requires_approval';
+            policyReasons.push(`Governance policy requires explicit operator approval for all release candidates`);
+          }
+          
+          if (policyResult === 'pass') {
+            policyReasons.push(`All policy metrics and regression gates passed`);
+          }
+
+          const candidateId = `rc-${Date.now()}`;
+          const rcCount = get().releaseCandidates.length + 1;
+          const version = `v${totalCases > 0 ? '1.0' : '0.9'}.${rcCount}-rc${rcCount}`;
+          
+          const newCandidate: ReleaseCandidate = {
+            id: candidateId,
+            schemaVersion: 'agentdeck.governance.v1',
+            version,
+            timestamp: new Date().toISOString(),
+            status: 'pending',
+            score: newScore,
+            benchmarkId,
+            failuresCount,
+            timelineEventId: timelineEv ? timelineEv.id : `evt-${runId}`,
+            policyResult,
+            policyReasons,
+            baselineScore: benchmark.baselineScore,
+            regressionDelta: diff
+          };
+          
+          const updatedCandidates = [newCandidate, ...get().releaseCandidates];
+          await window.api.governance.saveCandidates(rootPath, presetId, updatedCandidates);
+          
+          set({ releaseCandidates: updatedCandidates });
+          await get().addSystemLog(`Governance alert: Spawning Release Candidate ${version} (${policyResult.toUpperCase()})`, 'info');
+          
+          await get().addTimelineEvent(
+            'release_candidate_created',
+            candidateId,
+            `Release Candidate ${version} spawned in queue (Policy evaluation: ${policyResult.toUpperCase()})`,
+            {
+              candidateId,
+              version,
+              score: newScore,
+              policyResult,
+              reasons: policyReasons
+            },
+            policyResult === 'blocked' ? 'warning' : 'info'
+          );
+        }
+      }
     },
 
     approveRun: async (approvalId: string) => {
@@ -1590,6 +1681,116 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         set(state => ({
           timelineEvents: [event, ...state.timelineEvents]
         }));
+      }
+      return event; // Return event for linking
+    },
+
+    saveGovernancePolicies: async (policies: GovernancePolicy) => {
+      const activeWorkspace = get().activeWorkspace;
+      if (!activeWorkspace) return;
+      const rootPath = activeWorkspace.rootPath || null;
+      const presetId = activeWorkspace.id;
+      const success = await window.api.governance.savePolicies(rootPath, presetId, policies);
+      if (success) {
+        set({ governancePolicies: policies });
+        await get().addSystemLog('Governance policies updated successfully', 'success');
+        await get().addTimelineEvent(
+          'manifest_saved',
+          activeWorkspace.id,
+          `Governance policies updated (minScore: ${policies.minScore}, requireApproval: ${policies.requireApproval}, allowRegression: ${policies.allowRegression})`,
+          { policies }
+        );
+      }
+    },
+
+    createReleaseCandidate: async (candidate: Omit<ReleaseCandidate, 'schemaVersion' | 'timestamp' | 'status'>) => {
+      const activeWorkspace = get().activeWorkspace;
+      if (!activeWorkspace) return;
+      const rootPath = activeWorkspace.rootPath || null;
+      const presetId = activeWorkspace.id;
+      
+      const newCandidate: ReleaseCandidate = {
+        ...candidate,
+        schemaVersion: 'agentdeck.governance.v1',
+        timestamp: new Date().toISOString(),
+        status: 'pending'
+      };
+      
+      const updatedCandidates = [newCandidate, ...get().releaseCandidates];
+      const success = await window.api.governance.saveCandidates(rootPath, presetId, updatedCandidates);
+      if (success) {
+        set({ releaseCandidates: updatedCandidates });
+        await get().addSystemLog(`Release Candidate ${candidate.version} created inside queue`, 'info');
+      }
+    },
+
+    updateReleaseCandidateStatus: async (id: string, status: ReleaseCandidate['status'], notes?: string) => {
+      const activeWorkspace = get().activeWorkspace;
+      if (!activeWorkspace) return;
+      const rootPath = activeWorkspace.rootPath || null;
+      const presetId = activeWorkspace.id;
+      
+      const candidate = get().releaseCandidates.find(c => c.id === id);
+      if (!candidate) return;
+
+      // Enforce lifecycle rules: pending -> approved -> released, pending -> rejected
+      if (status === 'approved' && candidate.status !== 'pending') {
+        await get().addSystemLog(`Lifecycle check failed: Candidate must be PENDING to be APPROVED.`, 'error');
+        return;
+      }
+      if (status === 'rejected' && candidate.status !== 'pending') {
+        await get().addSystemLog(`Lifecycle check failed: Candidate must be PENDING to be REJECTED.`, 'error');
+        return;
+      }
+      if (status === 'released' && candidate.status !== 'approved') {
+        await get().addSystemLog(`Lifecycle check failed: Candidate must be APPROVED to be RELEASED.`, 'error');
+        return;
+      }
+      
+      const updatedCandidates = get().releaseCandidates.map(c => {
+        if (c.id === id) {
+          return {
+            ...c,
+            status,
+            notes: notes || c.notes,
+            approvedBy: 'operator',
+            approvedAt: new Date().toISOString()
+          };
+        }
+        return c;
+      });
+      
+      const success = await window.api.governance.saveCandidates(rootPath, presetId, updatedCandidates);
+      if (success) {
+        set({ releaseCandidates: updatedCandidates });
+        await get().addSystemLog(`Release Candidate ${candidate.version} status updated to "${status.toUpperCase()}"`, 'success');
+        
+        let timelineType: TimelineEvent['type'] = 'release_candidate_approved';
+        let severity: TimelineEvent['severity'] = 'success';
+        
+        if (status === 'approved') {
+          timelineType = 'release_candidate_approved';
+          severity = 'success';
+        } else if (status === 'rejected') {
+          timelineType = 'release_candidate_rejected';
+          severity = 'warning';
+        } else if (status === 'released') {
+          timelineType = 'release_candidate_released';
+          severity = 'success';
+        }
+        
+        await get().addTimelineEvent(
+          timelineType,
+          id,
+          `Release Candidate ${candidate.version} marked as ${status.toUpperCase()} (Score: ${candidate.score})`,
+          {
+            candidateId: id,
+            version: candidate.version,
+            status,
+            notes
+          },
+          severity
+        );
       }
     }
   };

@@ -97,5 +97,13 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('timeline:load-events', { rootPath, presetId }),
     saveEvent: (rootPath: string | null, presetId: string, event: any) =>
       ipcRenderer.invoke('timeline:save-event', { rootPath, presetId, event }),
+  },
+  governance: {
+    loadData: (rootPath: string | null, presetId: string) =>
+      ipcRenderer.invoke('governance:load-data', { rootPath, presetId }),
+    savePolicies: (rootPath: string | null, presetId: string, policies: any) =>
+      ipcRenderer.invoke('governance:save-policies', { rootPath, presetId, policies }),
+    saveCandidates: (rootPath: string | null, presetId: string, list: any[]) =>
+      ipcRenderer.invoke('governance:save-candidates', { rootPath, presetId, list }),
   }
 });

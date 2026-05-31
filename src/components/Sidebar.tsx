@@ -11,7 +11,8 @@ import {
   Plus,
   Sliders,
   History,
-  RotateCcw
+  RotateCcw,
+  ShieldCheck
 } from 'lucide-react';
 import { Workspace } from '../types/workspace';
 
@@ -261,6 +262,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setCurrentTab }) =
             >
               <RotateCcw className="w-4 h-4 text-teal-400" />
               <span>Replay</span>
+            </button>
+            <button
+              onClick={() => setCurrentTab('governance')}
+              className={`w-full text-left px-3 py-2 rounded flex items-center gap-2.5 text-sm transition-all ${
+                currentTab === 'governance' 
+                  ? 'bg-blue-950/40 text-blue-400 border-l-2 border-blue-500 font-medium' 
+                  : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
+              }`}
+            >
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <span>Governance</span>
             </button>
             <button
               onClick={() => setCurrentTab('editor')}

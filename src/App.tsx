@@ -11,6 +11,7 @@ import { RuntimeDashboardView } from './components/RuntimeDashboardView';
 import { EvaluationsView } from './components/EvaluationsView';
 import { TimelineView } from './components/TimelineView';
 import { ReplayView } from './components/ReplayView';
+import { GovernanceView } from './components/GovernanceView';
 import { X, Play, Square, RefreshCw, FolderOpen, Code, ExternalLink, Sliders } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -425,6 +426,10 @@ export const App: React.FC = () => {
           ) : currentTab === 'replay' ? (
             <div className="flex-1 min-h-0">
               <ReplayView selectedEventId={replayEventId} />
+            </div>
+          ) : currentTab === 'governance' ? (
+            <div className="flex-1 min-h-0">
+              <GovernanceView />
             </div>
           ) : currentTab === 'editor' ? (
             <div className="flex-1 min-h-0">

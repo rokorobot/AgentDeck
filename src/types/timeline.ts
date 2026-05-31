@@ -12,7 +12,11 @@ export interface TimelineEvent {
     | 'service_started'
     | 'service_stopped'
     | 'manifest_saved'
-    | 'quick_action_triggered';
+    | 'quick_action_triggered'
+    | 'release_candidate_created'
+    | 'release_candidate_approved'
+    | 'release_candidate_rejected'
+    | 'release_candidate_released';
   severity: 'info' | 'success' | 'warning' | 'error';
   actor: 'operator' | 'system' | 'simulator';
   isSeeded?: boolean;
