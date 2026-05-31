@@ -24,6 +24,7 @@ export interface RegressionRun {
   triggerContext: string;
   isSimulated?: boolean;
   isApproved?: boolean;
+  isRejected?: boolean;
 }
 
 export interface ApprovalQueueItem {

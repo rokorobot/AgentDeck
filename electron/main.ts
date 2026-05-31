@@ -485,6 +485,10 @@ ipcMain.handle('ide:open', async (_event, { ide, folderPath }) => {
 
 // Helper to get evaluation directory
 function getEvalsDir(rootPath: string | null, presetId: string): string {
+  const PRESET_IDS = ['sound-machina', 'tm4', 'robotstore'];
+  if (PRESET_IDS.includes(presetId)) {
+    return path.join(DATA_DIR, 'presets-evals', presetId);
+  }
   if (rootPath && fs.existsSync(rootPath)) {
     return path.join(rootPath, '.agentdeck', 'evals');
   } else {

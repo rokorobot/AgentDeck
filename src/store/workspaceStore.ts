@@ -156,6 +156,7 @@ interface WorkspaceStore {
   promoteToBaseline(benchmarkId: string, runId: string): Promise<void>;
   saveFailureCase(failure: FailureCase): Promise<void>;
   deleteFailureCase(failureId: string): Promise<void>;
+  createBenchmark(benchmark: BenchmarkDefinition): Promise<void>;
 }
 
 const terminalLineBuffers: Record<string, string> = {};
@@ -912,7 +913,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         // Populate approval queue dynamically from the runs
         const openApprovals: ApprovalQueueItem[] = [];
         for (const run of data.runs) {
-          if (!run.isApproved && run.status === 'regression_detected') {
+          if (!run.isApproved && !run.isRejected && run.status === 'regression_detected') {
             openApprovals.push({
               id: `app-${run.id}`,
               benchmarkId: run.benchmarkId,
@@ -1069,7 +1070,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       );
 
       const updatedRuns = get().regressionRuns.map(run => 
-        run.id === queueItem.runId ? { ...run, isApproved: true } : run
+        run.id === queueItem.runId ? { ...run, isApproved: true, isRejected: false } : run
       );
 
       const rootPath = activeWorkspace.rootPath || null;
@@ -1097,7 +1098,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       );
 
       const updatedRuns = get().regressionRuns.map(run => 
-        run.id === queueItem.runId ? { ...run, isApproved: false } : run
+        run.id === queueItem.runId ? { ...run, isApproved: false, isRejected: true } : run
       );
 
       const rootPath = activeWorkspace.rootPath || null;
@@ -1165,6 +1166,21 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
           failures: state.failures.filter(f => f.id !== failureId)
         }));
         await get().addSystemLog(`Failure case ${failureId} deleted`, 'info');
+      }
+    },
+
+    createBenchmark: async (benchmark: BenchmarkDefinition) => {
+      const activeWorkspace = get().activeWorkspace;
+      if (!activeWorkspace) return;
+
+      const updatedBenchmarks = [...get().benchmarks, benchmark];
+      const rootPath = activeWorkspace.rootPath || null;
+      const presetId = activeWorkspace.id;
+
+      const success = await window.api.evals.saveBenchmarks(rootPath, presetId, updatedBenchmarks);
+      if (success) {
+        set({ benchmarks: updatedBenchmarks });
+        await get().addSystemLog(`Benchmark "${benchmark.name}" created successfully`, 'success');
       }
     }
   };

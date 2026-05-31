@@ -30,10 +30,18 @@ export const EvaluationsView: React.FC<EvaluationsViewProps> = ({ initialSubTab 
     rejectRun,
     promoteToBaseline,
     saveFailureCase,
-    deleteFailureCase
+    deleteFailureCase,
+    createBenchmark
   } = useWorkspaceStore();
 
   const [activeSubTab, setActiveSubTab] = useState(initialSubTab);
+  
+  // Benchmark Creation editing state
+  const [isAddingBenchmark, setIsAddingBenchmark] = useState(false);
+  const [newBenchmarkName, setNewBenchmarkName] = useState('');
+  const [newBenchmarkDesc, setNewBenchmarkDesc] = useState('');
+  const [newBenchmarkCriteria, setNewBenchmarkCriteria] = useState('');
+  const [newBenchmarkBaseline, setNewBenchmarkBaseline] = useState(0.80);
   
   // Failure Library editing state
   const [isAddingFailure, setIsAddingFailure] = useState(false);
@@ -45,6 +53,16 @@ export const EvaluationsView: React.FC<EvaluationsViewProps> = ({ initialSubTab 
 
   // Selected benchmark for regression trigger
   const [selectedBenchmarkId, setSelectedBenchmarkId] = useState(benchmarks[0]?.id || '');
+
+  React.useEffect(() => {
+    if (benchmarks.length > 0) {
+      if (!benchmarks.some(b => b.id === selectedBenchmarkId)) {
+        setSelectedBenchmarkId(benchmarks[0].id);
+      }
+    } else {
+      setSelectedBenchmarkId('');
+    }
+  }, [benchmarks, selectedBenchmarkId]);
 
   const handleRunRegression = async () => {
     const targetId = selectedBenchmarkId || benchmarks[0]?.id;
@@ -79,6 +97,36 @@ export const EvaluationsView: React.FC<EvaluationsViewProps> = ({ initialSubTab 
     setNewFailureDesc('');
     setNewFailureRes('');
     setIsAddingFailure(false);
+  };
+
+  const handleAddBenchmarkSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newBenchmarkName.trim()) return;
+
+    const id = newBenchmarkName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const criteriaList = newBenchmarkCriteria
+      .split(',')
+      .map(c => c.trim())
+      .filter(c => c.length > 0);
+
+    const newBenchmark = {
+      id,
+      name: newBenchmarkName,
+      description: newBenchmarkDesc,
+      criteria: criteriaList.length > 0 ? criteriaList : ['Quality', 'Performance'],
+      baselineScore: Number(newBenchmarkBaseline) || 0.80,
+      goldStandardsCount: 10
+    };
+
+    await createBenchmark(newBenchmark);
+
+    // Reset Form
+    setNewBenchmarkName('');
+    setNewBenchmarkDesc('');
+    setNewBenchmarkCriteria('');
+    setNewBenchmarkBaseline(0.80);
+    setIsAddingBenchmark(false);
+    setSelectedBenchmarkId(id);
   };
 
   // Check if evaluation script is configured in active workspace
@@ -577,10 +625,87 @@ export const EvaluationsView: React.FC<EvaluationsViewProps> = ({ initialSubTab 
         {/* TAB 5: BENCHMARK DEFINITION */}
         {activeSubTab === 'definition' && (
           <div className="space-y-4">
-            <div>
-              <h2 className="text-sm font-bold font-mono text-gray-200">Suite Quality Dimensions</h2>
-              <p className="text-xs text-gray-500">Configure parameters, weight values, and criteria thresholds for workspace validations.</p>
+            <div className="flex justify-between items-center border-b border-gray-900 pb-2">
+              <div>
+                <h2 className="text-sm font-bold font-mono text-gray-200">Suite Quality Dimensions</h2>
+                <p className="text-xs text-gray-500">Configure parameters, weight values, and criteria thresholds for workspace validations.</p>
+              </div>
+              
+              <button
+                onClick={() => setIsAddingBenchmark(!isAddingBenchmark)}
+                className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-mono font-bold px-3 py-1.5 rounded flex items-center gap-1 transition-all"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>{isAddingBenchmark ? 'Cancel Form' : 'Create Benchmark'}</span>
+              </button>
             </div>
+
+            {/* Add Benchmark Form */}
+            {isAddingBenchmark && (
+              <form onSubmit={handleAddBenchmarkSubmit} className="p-4 bg-[#111827]/40 border border-gray-800 rounded-lg space-y-3 font-mono text-xs">
+                <div className="font-bold text-gray-300 pb-1 border-b border-gray-900 uppercase text-[10px] tracking-wider text-blue-400">
+                  New Benchmark Spec Definition
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-gray-500 uppercase text-[9px] font-bold">Benchmark Suite Name</label>
+                    <input
+                      type="text"
+                      required
+                      value={newBenchmarkName}
+                      onChange={(e) => setNewBenchmarkName(e.target.value)}
+                      placeholder="e.g. Sound Machina Prompt Quality"
+                      className="w-full bg-[#0B0F14] border border-gray-800 focus:border-blue-500 focus:outline-none px-2 py-1.5 rounded text-gray-300"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-gray-500 uppercase text-[9px] font-bold">Baseline Target Score</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="1"
+                      required
+                      value={newBenchmarkBaseline}
+                      onChange={(e) => setNewBenchmarkBaseline(parseFloat(e.target.value))}
+                      placeholder="e.g. 0.85"
+                      className="w-full bg-[#0B0F14] border border-gray-800 focus:border-blue-500 focus:outline-none px-2 py-1.5 rounded text-gray-300"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-gray-500 uppercase text-[9px] font-bold">Suite Description</label>
+                  <textarea
+                    value={newBenchmarkDesc}
+                    onChange={(e) => setNewBenchmarkDesc(e.target.value)}
+                    rows={2}
+                    placeholder="Describe the quality goals of this validation suite..."
+                    className="w-full bg-[#0B0F14] border border-gray-800 focus:border-blue-500 focus:outline-none px-2 py-1.5 rounded text-gray-300"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-gray-500 uppercase text-[9px] font-bold">Evaluation Criteria Dimensions (comma-separated)</label>
+                  <input
+                    type="text"
+                    value={newBenchmarkCriteria}
+                    onChange={(e) => setNewBenchmarkCriteria(e.target.value)}
+                    placeholder="e.g. Melodic structure, Genre consistency, Production usability"
+                    className="w-full bg-[#0B0F14] border border-gray-800 focus:border-blue-500 focus:outline-none px-2 py-1.5 rounded text-gray-300"
+                  />
+                  <p className="text-[10px] text-gray-500">Provide comma-separated dimensions to score outputs against.</p>
+                </div>
+
+                <button
+                  type="submit"
+                  className="bg-blue-600 hover:bg-blue-500 text-white rounded px-4 py-1.5 font-bold transition-all text-xs"
+                >
+                  Create Benchmark Spec
+                </button>
+              </form>
+            )}
 
             {benchmarks.length === 0 ? (
               <div className="p-8 text-center text-xs text-gray-600 border border-dashed border-gray-800 rounded bg-[#111827]/10">
