@@ -20,8 +20,9 @@ graph TD
 ### Electron Main Process (`electron/main.ts`)
 - Serves as the system-privileged supervisor.
 - Spawns and manages the Chromium window context.
-- Orchestrates general IPC router endpoints (`dialog:open-directory`, `workspace:load-path`, `port:check-health`, `ide:open`).
+- Orchestrates general IPC router endpoints (`dialog:open-directory`, `port:check-health`, `ide:open`).
 - Shuts down all active process tree structures upon application exit.
+- **Visual manifest operations** (`workspace:check-config`, `workspace:initialize`, `workspace:save`) manage schema v2 layouts, enforce preset read-only locks, and perform atomic disk writes.
 
 ### Preload Layer (`electron/preload.ts`)
 - Acts as a unidirectional, selective security gateway.
@@ -49,24 +50,50 @@ graph TD
 
 ---
 
-## 3. Runtime Controls
+## 3. Service Groups & Runtime Controls
 
 ### Process Manager (`electron/processManager.ts`)
 - Maintains the local `ManagedProcess` registry mapping all service commands started from the frontend.
 - Captures native OS PIDs from terminal adapters.
 - Employs process-tree termination routines on Windows:
-  `taskkill /F /T /PID <pid>`
-  This recursively kills all spawned child nodes (e.g. stopping a concurrently dev server will kill its spawned node-pty shell, standard Node/Vite process, and file watcher threads simultaneously to prevent port leakage).
+    `taskkill /F /T /PID <pid>`
+    This recursively kills all spawned child nodes (e.g. stopping a dev server will kill its spawned node-pty shell, standard Node/Vite process, and file watcher threads simultaneously to prevent port leakage).
 - Broadcasts real-time state change updates to the React Zustand store via `process:state-changed` IPC streams.
+
+### Frontend Store Orchestration Plane (`src/store/workspaceStore.ts`)
+- Manages global commands `START ALL`, `STOP ALL`, and `RESTART ALL` for `services`.
+- Tracks and filters active services to prevent spawning duplicate process tabs or terminating raw interactive terminal sessions (e.g., raw PowerShell or WSL console presets).
 
 ---
 
-## 4. Safety Gates & Observability
+## 4. Visual Manifest Configuration & Wizards
+
+### Manifest Schema Validation (`src/lib/manifestValidation.ts`)
+- Shared library containing schema v2 format checks. Exposes:
+  `validateManifest(config)`
+- Enforces strict rules:
+  - Required fields (id, name, rootPath, previewUrl).
+  - Preview URL address checks (blocks external browsing, allowed only for localhost or 127.0.0.1).
+  - Uniqueness of service and quick action IDs.
+  - Dropdown type validations (`openFolder`, `previewUrl`, `command`, `startService`) and their corresponding parameters.
+- Validates on both the frontend editor UI (interactive feedback) and the backend IPC save route (failsafe).
+
+### Atomic Save & Backup Engine
+- Dynamic discovered workspace manifest files (.agentdeck/workspace.json) are saved atomically:
+  1. Validate config input schema.
+  2. Create a timestamped copy of the existing manifest (`workspace.json.bak-YYYYMMDD-HHMM`) inside the workspace's `.agentdeck` directory to prevent backup overwrites.
+  3. Write data to a temporary file, and rename it to overwrite `workspace.json` once done.
+  4. Reload active workspace, clear override preview URLs, and log `MANIFEST_SAVED` success records.
+- Built-in presets (e.g., sound-machina, tm4, robotstore) lack workspace paths and are locked down as read-only. Form editing inputs and saving triggers are disabled with a Lock banner.
+
+---
+
+## 5. Safety Gates & Observability
 
 ### Command Safety Gate (`electron/commandSafety.ts` & `src/lib/commandSafety.ts`)
 - **Dual-Verification**: Validates commands on both the frontend UI and backend terminal input channels to prevent safety bypasses.
 - Parsers scan inputs against destructive regex patterns (e.g. `rm -rf`, `del`, `rmdir`, `git clean`) and absolute navigation sequences trying to exit the designated workspace scope path (e.g. trying to inspect system paths).
-- Interrupts execution and displays a modal dialog when flagged. If confirmed, the command is temporarily whitelisted for 5 seconds before expiring.
+- Interrupts execution and displays a modal dialog when flagged. If confirmed, the command is whitelisted for 5 seconds before expiring.
 
 ### Observability Layer
 - **HTTP/TCP Prober**: Conducts non-blocking port health queries on workspace `previewUrl` targets (like `http://localhost:8000`), updating port connectivity status lights in real-time.
