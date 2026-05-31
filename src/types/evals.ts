@@ -3,6 +3,15 @@ export interface WorkspaceEvalConfig {
   baselineThreshold?: number;
 }
 
+export interface BenchmarkTestCase {
+  id: string;
+  benchmarkId: string;
+  sourceFailureId?: string;
+  prompt: string;
+  expected: string;
+  threshold: number;
+}
+
 export interface BenchmarkDefinition {
   id: string;
   name: string;
@@ -10,6 +19,23 @@ export interface BenchmarkDefinition {
   criteria: string[];
   baselineScore: number;
   goldStandardsCount?: number;
+  testCases?: BenchmarkTestCase[];
+}
+
+export interface TestCaseRunResult {
+  caseId: string;
+  prompt: string;
+  status: 'pass' | 'fail';
+  score: number;
+  isImproved?: boolean;
+  isRegressed?: boolean;
+}
+
+export interface BenchmarkReport {
+  passRate: number;
+  baselineScore: number;
+  currentScore: number;
+  results: TestCaseRunResult[];
 }
 
 export interface RegressionRun {
@@ -25,6 +51,7 @@ export interface RegressionRun {
   isSimulated?: boolean;
   isApproved?: boolean;
   isRejected?: boolean;
+  report?: BenchmarkReport;
 }
 
 export interface ApprovalQueueItem {
@@ -49,4 +76,35 @@ export interface FailureCase {
   resolution?: string;
   resolved: boolean;
   timestamp: string;
+  converted?: boolean;
+  convertedToBenchmarkId?: string;
+  convertedToTestCaseId?: string;
+}
+
+export interface GoldStandard {
+  id: string;
+  title: string;
+  content: string;
+  tags: string[];
+  type: 'prompt' | 'output' | 'document' | 'rubric';
+  source?: string;
+  createdAt: string;
+}
+
+export interface JudgeDefinition {
+  id: string;
+  name: string;
+  criteria: string[];
+  threshold: number;
+}
+
+export interface PromotionHistoryRecord {
+  timestamp: string;
+  benchmarkId: string;
+  benchmarkName: string;
+  oldScore: number;
+  newScore: number;
+  approvedBy: string;
+  reason?: string;
+  runId?: string;
 }

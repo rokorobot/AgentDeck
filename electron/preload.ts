@@ -83,5 +83,13 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('evals:delete-failure', { rootPath, presetId, failureId }),
     saveRegressionHistory: (rootPath: string | null, presetId: string, history: any[]) =>
       ipcRenderer.invoke('evals:save-regression-history', { rootPath, presetId, history }),
+    saveGoldStandard: (rootPath: string | null, presetId: string, item: any) =>
+      ipcRenderer.invoke('evals:save-gold-standard', { rootPath, presetId, item }),
+    deleteGoldStandard: (rootPath: string | null, presetId: string, id: string) =>
+      ipcRenderer.invoke('evals:delete-gold-standard', { rootPath, presetId, id }),
+    saveJudges: (rootPath: string | null, presetId: string, list: any[]) =>
+      ipcRenderer.invoke('evals:save-judges', { rootPath, presetId, list }),
+    savePromotions: (rootPath: string | null, presetId: string, list: any[]) =>
+      ipcRenderer.invoke('evals:save-promotions', { rootPath, presetId, list }),
   }
 });

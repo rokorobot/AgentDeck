@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { Workspace, ManagedProcess } from '../types/workspace';
 import { checkCommandSafety } from '../lib/commandSafety';
-import { BenchmarkDefinition, RegressionRun, ApprovalQueueItem, FailureCase } from '../types/evals';
+import { BenchmarkDefinition, RegressionRun, ApprovalQueueItem, FailureCase, GoldStandard, JudgeDefinition, PromotionHistoryRecord, TestCaseRunResult, BenchmarkReport, BenchmarkTestCase } from '../types/evals';
+
 
 // Extend window object types for TypeScript safety
 declare global {
@@ -62,11 +63,15 @@ declare global {
         approveCommand(command: string): Promise<boolean>;
       };
       evals: {
-        loadData(rootPath: string | null, presetId: string): Promise<{ benchmarks: any[]; runs: any[]; failures: any[] }>;
+        loadData(rootPath: string | null, presetId: string): Promise<{ benchmarks: any[]; runs: any[]; failures: any[]; goldStandards: any[]; judges: any[]; promotions: any[] }>;
         saveBenchmarks(rootPath: string | null, presetId: string, benchmarks: any[]): Promise<boolean>;
         saveFailure(rootPath: string | null, presetId: string, failure: any): Promise<boolean>;
         deleteFailure(rootPath: string | null, presetId: string, failureId: string): Promise<boolean>;
         saveRegressionHistory(rootPath: string | null, presetId: string, history: any[]): Promise<boolean>;
+        saveGoldStandard(rootPath: string | null, presetId: string, item: any): Promise<boolean>;
+        deleteGoldStandard(rootPath: string | null, presetId: string, id: string): Promise<boolean>;
+        saveJudges(rootPath: string | null, presetId: string, list: any[]): Promise<boolean>;
+        savePromotions(rootPath: string | null, presetId: string, list: any[]): Promise<boolean>;
       };
     };
   }
@@ -148,15 +153,23 @@ interface WorkspaceStore {
   regressionRuns: RegressionRun[];
   approvalQueue: ApprovalQueueItem[];
   failures: FailureCase[];
+  goldStandards: GoldStandard[];
+  judges: JudgeDefinition[];
+  promotions: PromotionHistoryRecord[];
   isRunningBenchmark: boolean;
   loadEvalsData(): Promise<void>;
   runRegressionSet(benchmarkId: string): Promise<void>;
   approveRun(approvalId: string): Promise<void>;
   rejectRun(approvalId: string): Promise<void>;
-  promoteToBaseline(benchmarkId: string, runId: string): Promise<void>;
+  promoteToBaseline(benchmarkId: string, runId: string, reason?: string): Promise<void>;
   saveFailureCase(failure: FailureCase): Promise<void>;
   deleteFailureCase(failureId: string): Promise<void>;
   createBenchmark(benchmark: BenchmarkDefinition): Promise<void>;
+  saveGoldStandard(item: GoldStandard): Promise<void>;
+  deleteGoldStandard(id: string): Promise<void>;
+  saveJudge(judge: JudgeDefinition): Promise<void>;
+  deleteJudge(id: string): Promise<void>;
+  convertFailureToTestCase(failureId: string, benchmarkId: string, threshold: number): Promise<void>;
 }
 
 const terminalLineBuffers: Record<string, string> = {};
@@ -189,6 +202,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     regressionRuns: [],
     approvalQueue: [],
     failures: [],
+    goldStandards: [],
+    judges: [],
+    promotions: [],
     isRunningBenchmark: false,
 
     init: async () => {
@@ -932,6 +948,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
           benchmarks: data.benchmarks || [],
           regressionRuns: data.runs || [],
           failures: data.failures || [],
+          goldStandards: data.goldStandards || [],
+          judges: data.judges || [],
+          promotions: data.promotions || [],
           approvalQueue: openApprovals
         });
       } catch (err) {
@@ -1004,6 +1023,62 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         }
       }
 
+      // Generate test cases run results
+      const testCasesList = benchmark.testCases || [];
+      const testCaseResults: TestCaseRunResult[] = [];
+      let passedCount = 0;
+
+      if (testCasesList.length > 0) {
+        testCasesList.forEach((tc) => {
+          const scoreOffset = isRegression ? -0.05 - Math.random() * 0.05 : 0.02 + Math.random() * 0.05;
+          const caseScore = parseFloat(Math.min(1.0, Math.max(0.0, tc.threshold + scoreOffset)).toFixed(2));
+          const caseStatus = caseScore >= tc.threshold ? 'pass' as const : 'fail' as const;
+          
+          if (caseStatus === 'pass') passedCount++;
+          
+          testCaseResults.push({
+            caseId: tc.id,
+            prompt: tc.prompt,
+            status: caseStatus,
+            score: caseScore,
+            isImproved: caseStatus === 'pass' && Math.random() > 0.6,
+            isRegressed: caseStatus === 'fail' && Math.random() > 0.4
+          });
+        });
+      } else {
+        const defaultPrompts = [
+          { id: 'mock-tc-1', prompt: 'Default validation case 1', threshold: 0.80 },
+          { id: 'mock-tc-2', prompt: 'Default validation case 2', threshold: 0.82 },
+          { id: 'mock-tc-3', prompt: 'Default validation case 3', threshold: 0.78 }
+        ];
+        defaultPrompts.forEach((tc) => {
+          const scoreOffset = isRegression ? -0.04 - Math.random() * 0.05 : 0.02 + Math.random() * 0.05;
+          const caseScore = parseFloat(Math.min(1.0, Math.max(0.0, tc.threshold + scoreOffset)).toFixed(2));
+          const caseStatus = caseScore >= tc.threshold ? 'pass' as const : 'fail' as const;
+          
+          if (caseStatus === 'pass') passedCount++;
+          
+          testCaseResults.push({
+            caseId: tc.id,
+            prompt: tc.prompt,
+            status: caseStatus,
+            score: caseScore,
+            isImproved: caseStatus === 'pass' && Math.random() > 0.7,
+            isRegressed: caseStatus === 'fail' && Math.random() > 0.5
+          });
+        });
+      }
+
+      const totalCases = testCaseResults.length;
+      const passRate = totalCases > 0 ? parseFloat(((passedCount / totalCases) * 100).toFixed(0)) : 100;
+
+      const report: BenchmarkReport = {
+        passRate,
+        baselineScore: benchmark.baselineScore,
+        currentScore: newScore,
+        results: testCaseResults
+      };
+
       const newRun: RegressionRun = {
         id: runId,
         benchmarkId,
@@ -1015,7 +1090,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         failuresCount,
         triggerContext: `Manual Triggered Run`,
         isSimulated: true,
-        isApproved: false
+        isApproved: false,
+        report
       };
 
       const updatedRuns = [newRun, ...get().regressionRuns];
@@ -1114,12 +1190,16 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       await get().addSystemLog(`Evals run ${queueItem.runId} marked as REJECTED`, 'warning');
     },
 
-    promoteToBaseline: async (benchmarkId: string, runId: string) => {
+    promoteToBaseline: async (benchmarkId: string, runId: string, reason?: string) => {
       const activeWorkspace = get().activeWorkspace;
       if (!activeWorkspace) return;
 
       const run = get().regressionRuns.find(r => r.id === runId);
       if (!run) return;
+
+      const targetBenchmark = get().benchmarks.find(b => b.id === benchmarkId);
+      const benchmarkName = targetBenchmark?.name || benchmarkId;
+      const oldScore = targetBenchmark?.baselineScore || 0;
 
       const updatedBenchmarks = get().benchmarks.map(b => 
         b.id === benchmarkId ? { ...b, baselineScore: run.score } : b
@@ -1130,7 +1210,24 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
 
       await window.api.evals.saveBenchmarks(rootPath, presetId, updatedBenchmarks);
 
-      set({ benchmarks: updatedBenchmarks });
+      const record: PromotionHistoryRecord = {
+        timestamp: new Date().toISOString(),
+        benchmarkId,
+        benchmarkName,
+        oldScore,
+        newScore: run.score,
+        approvedBy: 'operator',
+        reason: reason || 'Manual promotion override',
+        runId
+      };
+
+      const updatedPromotions = [record, ...get().promotions];
+      await window.api.evals.savePromotions(rootPath, presetId, updatedPromotions);
+
+      set({ 
+        benchmarks: updatedBenchmarks,
+        promotions: updatedPromotions
+      });
       await get().addSystemLog(`Promoted score ${run.score} to baseline for benchmark ${benchmarkId}`, 'success');
     },
 
@@ -1181,6 +1278,128 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       if (success) {
         set({ benchmarks: updatedBenchmarks });
         await get().addSystemLog(`Benchmark "${benchmark.name}" created successfully`, 'success');
+      }
+    },
+
+    saveGoldStandard: async (item: GoldStandard) => {
+      const activeWorkspace = get().activeWorkspace;
+      if (!activeWorkspace) return;
+
+      const rootPath = activeWorkspace.rootPath || null;
+      const presetId = activeWorkspace.id;
+
+      const success = await window.api.evals.saveGoldStandard(rootPath, presetId, item);
+      if (success) {
+        const exists = get().goldStandards.some(g => g.id === item.id);
+        const updated = exists
+          ? get().goldStandards.map(g => g.id === item.id ? item : g)
+          : [item, ...get().goldStandards];
+        set({ goldStandards: updated });
+        await get().addSystemLog(`Gold standard "${item.title}" saved successfully`, 'success');
+      }
+    },
+
+    deleteGoldStandard: async (id: string) => {
+      const activeWorkspace = get().activeWorkspace;
+      if (!activeWorkspace) return;
+
+      const rootPath = activeWorkspace.rootPath || null;
+      const presetId = activeWorkspace.id;
+
+      const success = await window.api.evals.deleteGoldStandard(rootPath, presetId, id);
+      if (success) {
+        set(state => ({
+          goldStandards: state.goldStandards.filter(g => g.id !== id)
+        }));
+        await get().addSystemLog(`Gold standard deleted`, 'info');
+      }
+    },
+
+    saveJudge: async (judge: JudgeDefinition) => {
+      const activeWorkspace = get().activeWorkspace;
+      if (!activeWorkspace) return;
+
+      const rootPath = activeWorkspace.rootPath || null;
+      const presetId = activeWorkspace.id;
+
+      const exists = get().judges.some(j => j.id === judge.id);
+      const updated = exists
+        ? get().judges.map(j => j.id === judge.id ? judge : j)
+        : [...get().judges, judge];
+
+      const success = await window.api.evals.saveJudges(rootPath, presetId, updated);
+      if (success) {
+        set({ judges: updated });
+        await get().addSystemLog(`Judge "${judge.name}" saved successfully`, 'success');
+      }
+    },
+
+    deleteJudge: async (id: string) => {
+      const activeWorkspace = get().activeWorkspace;
+      if (!activeWorkspace) return;
+
+      const rootPath = activeWorkspace.rootPath || null;
+      const presetId = activeWorkspace.id;
+
+      const updated = get().judges.filter(j => j.id !== id);
+      const success = await window.api.evals.saveJudges(rootPath, presetId, updated);
+      if (success) {
+        set({ judges: updated });
+        await get().addSystemLog(`Judge deleted`, 'info');
+      }
+    },
+
+    convertFailureToTestCase: async (failureId: string, benchmarkId: string, threshold: number) => {
+      const activeWorkspace = get().activeWorkspace;
+      if (!activeWorkspace) return;
+
+      const failure = get().failures.find(f => f.id === failureId);
+      if (!failure) return;
+
+      const testCaseId = `tc-${Date.now()}`;
+      const testCase: BenchmarkTestCase = {
+        id: testCaseId,
+        benchmarkId,
+        sourceFailureId: failureId,
+        prompt: failure.prompt,
+        expected: failure.expected || failure.resolution || 'Resolved prompt validation case.',
+        threshold
+      };
+
+      // Append test case to the target benchmark
+      const updatedBenchmarks = get().benchmarks.map(b => {
+        if (b.id === benchmarkId) {
+          const testCases = b.testCases || [];
+          return {
+            ...b,
+            testCases: [...testCases, testCase],
+            goldStandardsCount: (b.goldStandardsCount || 0) + 1
+          };
+        }
+        return b;
+      });
+
+      // Update failure state
+      const updatedFailure: FailureCase = {
+        ...failure,
+        resolved: true,
+        converted: true,
+        convertedToBenchmarkId: benchmarkId,
+        convertedToTestCaseId: testCaseId
+      };
+
+      const rootPath = activeWorkspace.rootPath || null;
+      const presetId = activeWorkspace.id;
+
+      const successBenchmarks = await window.api.evals.saveBenchmarks(rootPath, presetId, updatedBenchmarks);
+      const successFailure = await window.api.evals.saveFailure(rootPath, presetId, updatedFailure);
+
+      if (successBenchmarks && successFailure) {
+        set(state => ({
+          benchmarks: updatedBenchmarks,
+          failures: state.failures.map(f => f.id === failureId ? updatedFailure : f)
+        }));
+        await get().addSystemLog(`Converted failure case to test case inside benchmark ${benchmarkId}`, 'success');
       }
     }
   };
