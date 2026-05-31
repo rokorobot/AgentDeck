@@ -199,6 +199,7 @@ interface WorkspaceStore {
   saveGovernancePolicies(policies: GovernancePolicy): Promise<void>;
   createReleaseCandidate(candidate: Omit<ReleaseCandidate, 'schemaVersion' | 'timestamp' | 'status'>): Promise<void>;
   updateReleaseCandidateStatus(id: string, status: ReleaseCandidate['status'], notes?: string): Promise<void>;
+  sealGovernanceRecords(): Promise<void>;
 }
 
 const terminalLineBuffers: Record<string, string> = {};
@@ -1792,6 +1793,38 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
           severity
         );
       }
+    },
+
+    sealGovernanceRecords: async () => {
+      const activeWorkspace = get().activeWorkspace;
+      if (!activeWorkspace) return;
+      
+      const rootPath = activeWorkspace.rootPath || null;
+      const presetId = activeWorkspace.id;
+      
+      await get().addSystemLog('Initiating Governance Records Sealing...', 'info');
+      
+      // 1. Seal policies
+      if (get().governancePolicies) {
+        await get().saveGovernancePolicies(get().governancePolicies!);
+      }
+      
+      // 2. Seal release candidates
+      if (get().releaseCandidates.length > 0) {
+        await window.api.governance.saveCandidates(rootPath, presetId, get().releaseCandidates);
+      }
+      
+      // 3. Seal timeline events
+      if (get().timelineEvents.length > 0) {
+        for (const evt of get().timelineEvents) {
+          await window.api.timeline.saveEvent(rootPath, presetId, evt);
+        }
+      }
+      
+      await get().addSystemLog('Sealed all governance, candidate, and timeline event records with secure content hashes.', 'success');
+      
+      // Reload everything to fetch updated verification statuses from backend
+      await get().loadEvalsData();
     }
   };
 });

@@ -31,4 +31,6 @@ export interface TimelineEvent {
     runDetails?: any;
     [key: string]: any;
   };
+  hash?: string;
+  integrityStatus?: 'verified' | 'unsigned' | 'tampered';
 }

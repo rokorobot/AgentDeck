@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { TerminalManager } from './terminalManager';
 import { approveCommand } from './commandSafety';
 import { processManager } from './processManager';
@@ -917,6 +918,38 @@ function getTimelineDir(rootPath: string | null, presetId: string): string {
   }
 }
 
+// Helper to compute deterministic SHA-256 hash of an object
+function computeHash(obj: any): string {
+  if (obj === null || obj === undefined) return '';
+  const cleanObj = { ...obj };
+  // Strip keys that should be excluded from hashing
+  delete cleanObj.hash;
+  delete cleanObj.integrityStatus;
+  delete cleanObj.tampered;
+  
+  // Deterministic recursive key sorting
+  const sortObject = (o: any): any => {
+    if (o === null || typeof o !== 'object') return o;
+    if (Array.isArray(o)) return o.map(sortObject);
+    return Object.keys(o).sort().reduce((acc: any, key: string) => {
+      acc[key] = sortObject(o[key]);
+      return acc;
+    }, {});
+  };
+  
+  const serialized = JSON.stringify(sortObject(cleanObj));
+  return crypto.createHash('sha256').update(serialized).digest('hex');
+}
+
+// Helper to verify hash integrity of an object
+function verifyHash(obj: any): 'verified' | 'unsigned' | 'tampered' {
+  if (!obj || typeof obj !== 'object') return 'unsigned';
+  if (!obj.hash) return 'unsigned';
+  
+  const recomputed = computeHash(obj);
+  return obj.hash === recomputed ? 'verified' : 'tampered';
+}
+
 // IPC Handlers for Timeline Persistence
 ipcMain.handle('timeline:load-events', async (_event, { rootPath, presetId }) => {
   try {
@@ -930,7 +963,7 @@ ipcMain.handle('timeline:load-events', async (_event, { rootPath, presetId }) =>
     // Auto-seed if timeline is empty and it's a preset
     const PRESET_IDS = ['sound-machina', 'tm4', 'robotstore'];
     if (files.length === 0 && PRESET_IDS.includes(presetId)) {
-      const defaultEvents = [];
+      const defaultEvents: any[] = [];
       const now = new Date();
       
       if (presetId === 'sound-machina') {
@@ -1086,6 +1119,7 @@ ipcMain.handle('timeline:load-events', async (_event, { rootPath, presetId }) =>
       }
       
       for (const ev of defaultEvents) {
+        ev.hash = computeHash(ev);
         const filePath = path.join(timelineDir, `event-${ev.id}.json`);
         fs.writeFileSync(filePath, JSON.stringify(ev, null, 2), 'utf-8');
       }
@@ -1098,7 +1132,9 @@ ipcMain.handle('timeline:load-events', async (_event, { rootPath, presetId }) =>
         const filePath = path.join(timelineDir, file);
         try {
           const content = fs.readFileSync(filePath, 'utf-8');
-          events.push(JSON.parse(content));
+          const ev = JSON.parse(content);
+          ev.integrityStatus = verifyHash(ev);
+          events.push(ev);
         } catch (e) {
           console.error(`Failed to parse timeline event file ${file}:`, e);
         }
@@ -1118,6 +1154,7 @@ ipcMain.handle('timeline:save-event', async (_event, { rootPath, presetId, event
     if (!fs.existsSync(timelineDir)) {
       fs.mkdirSync(timelineDir, { recursive: true });
     }
+    event.hash = computeHash(event);
     const filePath = path.join(timelineDir, `event-${event.id}.json`);
     fs.writeFileSync(filePath, JSON.stringify(event, null, 2), 'utf-8');
     return true;
@@ -1157,6 +1194,7 @@ ipcMain.handle('governance:load-data', async (_event, { rootPath, presetId }) =>
     // Load or seed policies
     if (fs.existsSync(policiesPath)) {
       policies = JSON.parse(fs.readFileSync(policiesPath, 'utf-8'));
+      policies.integrityStatus = verifyHash(policies);
     } else {
       // Default Mock Policies for Presets
       if (presetId === 'sound-machina') {
@@ -1181,12 +1219,18 @@ ipcMain.handle('governance:load-data', async (_event, { rootPath, presetId }) =>
           requireApproval: false
         };
       }
+      policies.hash = computeHash(policies);
+      policies.integrityStatus = 'verified';
       fs.writeFileSync(policiesPath, JSON.stringify(policies, null, 2), 'utf-8');
     }
     
     // Load or seed release candidates
     if (fs.existsSync(candidatesPath)) {
-      releaseCandidates = JSON.parse(fs.readFileSync(candidatesPath, 'utf-8'));
+      const list = JSON.parse(fs.readFileSync(candidatesPath, 'utf-8'));
+      releaseCandidates = list.map((rc: any) => {
+        rc.integrityStatus = verifyHash(rc);
+        return rc;
+      });
     } else {
       // Seed an initial demo release candidate if empty for presets
       if (presetId === 'sound-machina') {
@@ -1228,6 +1272,12 @@ ipcMain.handle('governance:load-data', async (_event, { rootPath, presetId }) =>
           }
         ];
       }
+      
+      releaseCandidates = releaseCandidates.map((rc: any) => {
+        rc.hash = computeHash(rc);
+        rc.integrityStatus = 'verified';
+        return rc;
+      });
       fs.writeFileSync(candidatesPath, JSON.stringify(releaseCandidates, null, 2), 'utf-8');
     }
     
@@ -1244,6 +1294,7 @@ ipcMain.handle('governance:save-policies', async (_event, { rootPath, presetId, 
     if (!fs.existsSync(govDir)) {
       fs.mkdirSync(govDir, { recursive: true });
     }
+    policies.hash = computeHash(policies);
     const filePath = path.join(govDir, 'policies.json');
     fs.writeFileSync(filePath, JSON.stringify(policies, null, 2), 'utf-8');
     return true;
@@ -1259,8 +1310,12 @@ ipcMain.handle('governance:save-candidates', async (_event, { rootPath, presetId
     if (!fs.existsSync(govDir)) {
       fs.mkdirSync(govDir, { recursive: true });
     }
+    const listWithHashes = list.map((rc: any) => {
+      rc.hash = computeHash(rc);
+      return rc;
+    });
     const filePath = path.join(govDir, 'release_candidates.json');
-    fs.writeFileSync(filePath, JSON.stringify(list, null, 2), 'utf-8');
+    fs.writeFileSync(filePath, JSON.stringify(listWithHashes, null, 2), 'utf-8');
     return true;
   } catch (error) {
     console.error('Failed to save release candidates list:', error);

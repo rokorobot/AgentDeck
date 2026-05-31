@@ -3,6 +3,8 @@ export interface GovernancePolicy {
   minScore: number;
   allowRegression: boolean;
   requireApproval: boolean;
+  hash?: string;
+  integrityStatus?: 'verified' | 'unsigned' | 'tampered';
 }
 
 export interface ReleaseCandidate {
@@ -22,4 +24,6 @@ export interface ReleaseCandidate {
   notes?: string;
   approvedBy?: string;
   approvedAt?: string;
+  hash?: string;
+  integrityStatus?: 'verified' | 'unsigned' | 'tampered';
 }
