@@ -6,6 +6,11 @@ contextBridge.exposeInMainWorld('api', {
     load: (id: string) => ipcRenderer.invoke('workspaces:load', id),
     openDirectory: () => ipcRenderer.invoke('dialog:open-directory'),
     loadFromPath: (path: string) => ipcRenderer.invoke('workspace:load-path', path),
+    checkConfig: (path: string) => ipcRenderer.invoke('workspace:check-config', path),
+    initialize: (folderPath: string, name: string, previewUrl: string, templateId: string) =>
+      ipcRenderer.invoke('workspace:initialize', { folderPath, name, previewUrl, templateId }),
+    save: (id: string, rootPath: string, config: any) =>
+      ipcRenderer.invoke('workspace:save', { id, rootPath, config }),
   },
   layout: {
     save: (layout: any) => ipcRenderer.invoke('layout:save', layout),

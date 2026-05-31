@@ -8,7 +8,8 @@ import {
   RefreshCw,
   Layers,
   ChevronRight,
-  Plus
+  Plus,
+  Sliders
 } from 'lucide-react';
 import { Workspace } from '../types/workspace';
 
@@ -215,7 +216,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setCurrentTab }) =
               <Terminal className="w-4 h-4" />
               <span>Shell Console</span>
             </button>
-            <button
+             <button
               onClick={() => setCurrentTab('logs')}
               className={`w-full text-left px-3 py-2 rounded flex items-center gap-2.5 text-sm transition-all ${
                 currentTab === 'logs' 
@@ -225,6 +226,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setCurrentTab }) =
             >
               <Activity className="w-4 h-4" />
               <span>Safety Logs</span>
+            </button>
+            <button
+              onClick={() => setCurrentTab('editor')}
+              className={`w-full text-left px-3 py-2 rounded flex items-center gap-2.5 text-sm transition-all ${
+                currentTab === 'editor' 
+                  ? 'bg-blue-950/40 text-blue-400 border-l-2 border-blue-500 font-medium' 
+                  : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
+              }`}
+            >
+              <Sliders className="w-4 h-4" />
+              <span>Manifest Editor</span>
             </button>
           </div>
         </div>

@@ -5,7 +5,9 @@ import { TerminalPanel } from './components/TerminalPanel';
 import { BrowserPreview } from './components/BrowserPreview';
 import { LogsPanel } from './components/LogsPanel';
 import { SafetyDialog } from './components/SafetyDialog';
-import { X, Play, Square, RefreshCw, FolderOpen, Code, ExternalLink } from 'lucide-react';
+import { ManifestEditor } from './components/ManifestEditor';
+import { NewWorkspaceWizard } from './components/NewWorkspaceWizard';
+import { X, Play, Square, RefreshCw, FolderOpen, Code, ExternalLink, Sliders } from 'lucide-react';
 
 export const App: React.FC = () => {
   const {
@@ -363,6 +365,19 @@ export const App: React.FC = () => {
               >
                 <FolderOpen className="w-3.5 h-3.5" />
               </button>
+              
+              <span className="text-gray-700 font-normal mx-1">|</span>
+              <button
+                onClick={() => setCurrentTab(currentTab === 'editor' ? 'terminals' : 'editor')}
+                className={`p-1.5 rounded transition-colors border ${
+                  currentTab === 'editor'
+                    ? 'text-blue-400 bg-blue-950/20 border-blue-900/35'
+                    : 'text-gray-400 hover:text-blue-400 hover:bg-gray-800/60 border-transparent'
+                }`}
+                title="Toggle Workspace Manifest Configuration Editor"
+              >
+                <Sliders className="w-3.5 h-3.5" />
+              </button>
             </div>
           )}
         </div>
@@ -372,6 +387,10 @@ export const App: React.FC = () => {
           {currentTab === 'logs' ? (
             <div className="flex-1 min-h-0">
               <LogsPanel />
+            </div>
+          ) : currentTab === 'editor' ? (
+            <div className="flex-1 min-h-0">
+              <ManifestEditor />
             </div>
           ) : (
             // High Density Resizable Split layout
@@ -491,6 +510,9 @@ export const App: React.FC = () => {
 
       {/* Global Safety dialog interception modal */}
       <SafetyDialog />
+
+      {/* New Workspace Template configuration wizard modal */}
+      <NewWorkspaceWizard />
     </div>
   );
 };

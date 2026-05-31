@@ -11,6 +11,9 @@ declare global {
         load(id: string): Promise<Workspace | null>;
         openDirectory(): Promise<string | null>;
         loadFromPath(path: string): Promise<Workspace | null>;
+        checkConfig(path: string): Promise<{ exists: boolean }>;
+        initialize(folderPath: string, name: string, previewUrl: string, templateId: string): Promise<{ success: boolean; error?: string; workspace?: Workspace }>;
+        save(id: string, rootPath: string, config: any): Promise<{ success: boolean; error?: string; workspace?: Workspace }>;
       };
       layout: {
         save(layout: any): Promise<boolean>;
@@ -126,6 +129,11 @@ interface WorkspaceStore {
   stopAllServices(): Promise<void>;
   restartAllServices(): Promise<void>;
   executeQuickAction(action: any): Promise<void>;
+  showWizard: boolean;
+  wizardPath: string | null;
+  setWizardState(show: boolean, path?: string | null): void;
+  initializeWorkspace(folderPath: string, name: string, previewUrl: string, templateId: string): Promise<void>;
+  saveActiveWorkspace(config: any): Promise<{ success: boolean; error?: string }>;
 }
 
 const terminalLineBuffers: Record<string, string> = {};
@@ -152,6 +160,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     terminalWidthPercent: 50,
     logsHeightPercent: 22,
     previewUrlOverride: null,
+    showWizard: false,
+    wizardPath: null,
 
     init: async () => {
       // 1. Load layout configs and logs
@@ -439,6 +449,15 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
           if (loaded) {
             await get().setActiveWorkspace(loaded.id);
           }
+          return;
+        }
+
+        const check = await window.api.workspaces.checkConfig(folderPath);
+        if (!check.exists) {
+          set({
+            showWizard: true,
+            wizardPath: folderPath,
+          });
           return;
         }
 
@@ -788,6 +807,67 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
             }
           }
         }
+      }
+    },
+
+    setWizardState: (show: boolean, path: string | null = null) => {
+      set({ showWizard: show, wizardPath: path });
+    },
+
+    initializeWorkspace: async (folderPath: string, name: string, previewUrl: string, templateId: string) => {
+      try {
+        const res = await window.api.workspaces.initialize(folderPath, name, previewUrl, templateId);
+        if (!res.success || !res.workspace) {
+          await get().addSystemLog(`Failed to initialize workspace: ${res.error}`, 'error');
+          return;
+        }
+
+        const ws = res.workspace;
+        const { workspacePaths, workspaces } = get();
+
+        const updatedPaths = [...workspacePaths, folderPath];
+        const updatedWorkspaces = [...workspaces];
+        if (!updatedWorkspaces.some((w) => w.id === ws.id)) {
+          updatedWorkspaces.push(ws);
+        }
+
+        set({
+          workspacePaths: updatedPaths,
+          workspaces: updatedWorkspaces,
+          showWizard: false,
+          wizardPath: null,
+        });
+
+        await get().setActiveWorkspace(ws.id);
+        await get().addSystemLog(`Successfully initialized workspace: ${ws.name}`, 'success');
+      } catch (err) {
+        console.error('Failed to initialize workspace:', err);
+        await get().addSystemLog('Error initializing workspace.', 'error');
+      }
+    },
+
+    saveActiveWorkspace: async (config: any) => {
+      const activeWorkspace = get().activeWorkspace;
+      if (!activeWorkspace) return { success: false, error: 'No active workspace.' };
+
+      try {
+        const res = await window.api.workspaces.save(activeWorkspace.id, activeWorkspace.rootPath, config);
+        if (!res.success || !res.workspace) {
+          return { success: false, error: res.error || 'Failed to save configuration.' };
+        }
+
+        const updatedWorkspaces = get().workspaces.map((w) => (w.id === activeWorkspace.id ? res.workspace! : w));
+        set({
+          workspaces: updatedWorkspaces,
+          activeWorkspace: res.workspace,
+          previewUrlOverride: null,
+        });
+
+        await get().addSystemLog(`Visual configuration saved for workspace "${config.name}"`, 'success');
+        return { success: true };
+      } catch (err: any) {
+        console.error('Failed to save workspace config:', err);
+        return { success: false, error: err.message || 'Error occurred.' };
       }
     }
   };

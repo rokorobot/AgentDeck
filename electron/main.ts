@@ -6,6 +6,7 @@ import { approveCommand } from './commandSafety';
 import { processManager } from './processManager';
 import { exec } from 'child_process';
 import { setLogWindow, addSystemLogInternal } from './logger';
+import { validateManifest } from '../src/lib/manifestValidation';
 
 let mainWindow: BrowserWindow | null = null;
 const terminalManager = new TerminalManager();
@@ -222,43 +223,9 @@ ipcMain.handle('dialog:open-directory', async () => {
 // --- Dynamic Workspace Loader (.agentdeck/workspace.json) ---
 ipcMain.handle('workspace:load-path', async (_event, folderPath: string) => {
   try {
-    const agentdeckDir = path.join(folderPath, '.agentdeck');
-    const configPath = path.join(agentdeckDir, 'workspace.json');
-    
-    if (!fs.existsSync(agentdeckDir)) {
-      fs.mkdirSync(agentdeckDir, { recursive: true });
-    }
-    
+    const configPath = path.join(folderPath, '.agentdeck', 'workspace.json');
     if (!fs.existsSync(configPath)) {
-      const folderName = path.basename(folderPath);
-      const defaultWorkspace = {
-        schemaVersion: "agentdeck.workspace.v1",
-        id: folderName.toLowerCase().replace(/[^a-z0-9]/g, '-'),
-        name: folderName,
-        rootPath: folderPath,
-        previewUrl: 'http://localhost:3000',
-        health: {
-          type: 'http',
-          url: 'http://localhost:3000'
-        },
-        commands: [
-          {
-            id: 'start-dev',
-            label: 'Start Dev Server',
-            shell: 'powershell.exe',
-            command: "echo 'Starting dev server'"
-          }
-        ],
-        terminals: [
-          {
-            name: 'PowerShell',
-            shell: 'powershell.exe',
-            cwd: folderPath
-          }
-        ]
-      };
-      fs.writeFileSync(configPath, JSON.stringify(defaultWorkspace, null, 2), 'utf-8');
-      return defaultWorkspace;
+      return null;
     } else {
       const data = fs.readFileSync(configPath, 'utf-8');
       const config = JSON.parse(data);
@@ -268,6 +235,187 @@ ipcMain.handle('workspace:load-path', async (_event, folderPath: string) => {
   } catch (error) {
     console.error('Failed to load path workspace:', error);
     return null;
+  }
+});
+
+// --- Dynamic Workspace Manifest Editor & Wizard Operations ---
+ipcMain.handle('workspace:check-config', async (_event, folderPath: string) => {
+  try {
+    const configPath = path.join(folderPath, '.agentdeck', 'workspace.json');
+    return { exists: fs.existsSync(configPath) };
+  } catch (e) {
+    console.error(e);
+    return { exists: false };
+  }
+});
+
+ipcMain.handle('workspace:initialize', async (_event, { folderPath, name, previewUrl, templateId }) => {
+  try {
+    const agentdeckDir = path.join(folderPath, '.agentdeck');
+    const configPath = path.join(agentdeckDir, 'workspace.json');
+    
+    if (!fs.existsSync(agentdeckDir)) {
+      fs.mkdirSync(agentdeckDir, { recursive: true });
+    }
+
+    let services: any[] = [];
+    let quickActions: any[] = [];
+    
+    if (templateId === 'vite') {
+      services = [
+        {
+          id: 'frontend',
+          label: 'Frontend Dev',
+          shell: 'powershell.exe',
+          command: 'npm run dev',
+          cwd: '.'
+        }
+      ];
+      quickActions = [
+        {
+          id: 'open-folder',
+          label: 'Open Folder',
+          type: 'openFolder'
+        },
+        {
+          id: 'open-preview',
+          label: 'Open Preview',
+          type: 'previewUrl',
+          url: previewUrl
+        }
+      ];
+    } else if (templateId === 'fastapi') {
+      services = [
+        {
+          id: 'backend',
+          label: 'API Backend',
+          shell: 'powershell.exe',
+          command: 'uvicorn main:app --reload',
+          cwd: '.'
+        }
+      ];
+      quickActions = [
+        {
+          id: 'open-folder',
+          label: 'Open Folder',
+          type: 'openFolder'
+        },
+        {
+          id: 'open-preview',
+          label: 'Open Preview',
+          type: 'previewUrl',
+          url: previewUrl
+        }
+      ];
+    } else if (templateId === 'static') {
+      services = [
+        {
+          id: 'webserver',
+          label: 'Static Webserver',
+          shell: 'powershell.exe',
+          command: 'npx -y serve',
+          cwd: '.'
+        }
+      ];
+      quickActions = [
+        {
+          id: 'open-folder',
+          label: 'Open Folder',
+          type: 'openFolder'
+        }
+      ];
+    } else { // 'custom' or empty
+      quickActions = [
+        {
+          id: 'open-folder',
+          label: 'Open Folder',
+          type: 'openFolder'
+        }
+      ];
+    }
+
+    const id = path.basename(folderPath).toLowerCase().replace(/[^a-z0-9]/g, '-');
+
+    const newWorkspace = {
+      schemaVersion: "agentdeck.workspace.v2",
+      id,
+      name,
+      rootPath: folderPath,
+      previewUrl,
+      health: {
+        type: 'http',
+        url: previewUrl
+      },
+      services,
+      quickActions,
+      terminals: [
+        {
+          name: 'PowerShell',
+          shell: 'powershell.exe',
+          cwd: folderPath
+        }
+      ]
+    };
+
+    fs.writeFileSync(configPath, JSON.stringify(newWorkspace, null, 2), 'utf-8');
+    addSystemLogInternal(`MANIFEST_SAVED: Initialized new workspace configuration at "${configPath}"`, 'success', id);
+    return { success: true, workspace: newWorkspace };
+  } catch (error: any) {
+    console.error('Failed to initialize workspace:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('workspace:save', async (_event, { id, rootPath, config }) => {
+  try {
+    // A. Validate config
+    const valResult = validateManifest(config);
+    if (!valResult.valid) {
+      const errorList = valResult.errors.map(e => `${e.field}: ${e.message}`).join(', ');
+      return { success: false, error: `Validation failed: ${errorList}` };
+    }
+
+    // Determine destination path
+    let configPath = '';
+    if (rootPath) {
+      // Dynamic discovered workspace
+      configPath = path.join(rootPath, '.agentdeck', 'workspace.json');
+    } else {
+      // Presets are read-only
+      return { success: false, error: 'Built-in presets are read-only.' };
+    }
+
+    // Ensure directory exists
+    const agentdeckDir = path.dirname(configPath);
+    if (!fs.existsSync(agentdeckDir)) {
+      fs.mkdirSync(agentdeckDir, { recursive: true });
+    }
+
+    // B. Backup previous manifest if exists, with YYYYMMDD-HHMM timestamp
+    if (fs.existsSync(configPath)) {
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const hh = String(now.getHours()).padStart(2, '0');
+      const min = String(now.getMinutes()).padStart(2, '0');
+      
+      const backupPath = `${configPath}.bak-${yyyy}${mm}${dd}-${hh}${min}`;
+      fs.copyFileSync(configPath, backupPath);
+    }
+
+    // C. Write atomically
+    const tempPath = `${configPath}.tmp-${Date.now()}`;
+    fs.writeFileSync(tempPath, JSON.stringify(config, null, 2), 'utf-8');
+    
+    // Rename/overwrite atomically
+    fs.renameSync(tempPath, configPath);
+
+    addSystemLogInternal(`MANIFEST_SAVED: Visual configuration saved for "${config.name}"`, 'success', id);
+    return { success: true, workspace: config };
+  } catch (error: any) {
+    console.error('Failed to save workspace config:', error);
+    return { success: false, error: error.message };
   }
 });
 
