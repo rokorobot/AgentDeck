@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "agentdeck.workspace.v1",
+  "schemaVersion": "agentdeck.workspace.v2",
   "id": "robotstore",
   "name": "RobotStore",
   "rootPath": "E:\\AgentDeck",
@@ -8,12 +8,19 @@
     "type": "http",
     "url": "http://localhost:5173"
   },
-  "commands": [
+  "services": [
     {
-      "id": "start-vite",
-      "label": "Start Frontend",
+      "id": "frontend",
+      "label": "Frontend",
       "shell": "powershell.exe",
       "command": "echo 'npm run dev'"
+    }
+  ],
+  "quickActions": [
+    {
+      "id": "open-folder",
+      "label": "Open Folder",
+      "type": "openFolder"
     }
   ],
   "terminals": [

@@ -9,7 +9,7 @@ import {
 import { useWorkspaceStore } from '../store/workspaceStore';
 
 export const BrowserPreview: React.FC = () => {
-  const { activeWorkspace } = useWorkspaceStore();
+  const { activeWorkspace, previewUrlOverride } = useWorkspaceStore();
   const defaultUrl = activeWorkspace?.previewUrl || 'http://localhost:8000';
   
   const [urlInput, setUrlInput] = useState(defaultUrl);
@@ -19,12 +19,12 @@ export const BrowserPreview: React.FC = () => {
   
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
-  // Sync with active workspace change
+  // Sync with active workspace change or override change
   useEffect(() => {
-    const wsUrl = activeWorkspace?.previewUrl || 'http://localhost:8000';
+    const wsUrl = previewUrlOverride || activeWorkspace?.previewUrl || 'http://localhost:8000';
     setUrlInput(wsUrl);
     validateAndLoad(wsUrl);
-  }, [activeWorkspace]);
+  }, [activeWorkspace, previewUrlOverride]);
 
   const validateAndLoad = (targetUrl: string) => {
     const trimmed = targetUrl.trim();

@@ -99,6 +99,7 @@ interface WorkspaceStore {
   runtimeLogs: { timestamp: string; tabName: string; message: string }[];
   terminalWidthPercent: number;
   logsHeightPercent: number;
+  previewUrlOverride: string | null;
 
   init(): Promise<void>;
   setActiveWorkspace(id: string): Promise<void>;
@@ -120,6 +121,11 @@ interface WorkspaceStore {
   openWorkspaceInIDE(ide: string): Promise<void>;
   addRuntimeLog(terminalId: string, data: string): void;
   updatePanelDimensions(terminalWidth: number, logsHeight: number): Promise<void>;
+  setPreviewUrlOverride(url: string | null): void;
+  startAllServices(): Promise<void>;
+  stopAllServices(): Promise<void>;
+  restartAllServices(): Promise<void>;
+  executeQuickAction(action: any): Promise<void>;
 }
 
 const terminalLineBuffers: Record<string, string> = {};
@@ -145,6 +151,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     runtimeLogs: [],
     terminalWidthPercent: 50,
     logsHeightPercent: 22,
+    previewUrlOverride: null,
 
     init: async () => {
       // 1. Load layout configs and logs
@@ -231,6 +238,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         activeWorkspace: workspace,
         terminalSessions: get().terminalSessions.filter((s) => s.id.startsWith('run-')),
         activeTerminalTabId: null,
+        previewUrlOverride: null,
       });
 
       // Spawning default TTY terminals
@@ -687,6 +695,100 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         terminalWidthPercent: terminalWidth,
         logsHeightPercent: logsHeight,
       });
+    },
+
+    setPreviewUrlOverride: (url: string | null) => {
+      set({ previewUrlOverride: url });
+    },
+
+    startAllServices: async () => {
+      const { activeWorkspace, managedProcesses } = get();
+      if (!activeWorkspace || !activeWorkspace.services) return;
+
+      await get().addSystemLog(`START_ALL_SERVICES_REQUESTED: Spawning all managed service groups for "${activeWorkspace.name}"`, 'info');
+
+      for (const service of activeWorkspace.services) {
+        const isRunning = managedProcesses.some(
+          (p) => p.commandId === service.id && p.workspaceId === activeWorkspace.id && (p.status === 'running' || p.status === 'starting')
+        );
+        if (isRunning) {
+          continue;
+        }
+        await get().startManagedProcess(service);
+      }
+    },
+
+    stopAllServices: async () => {
+      const { activeWorkspace, managedProcesses } = get();
+      if (!activeWorkspace || !activeWorkspace.services) return;
+
+      await get().addSystemLog(`STOP_ALL_SERVICES_REQUESTED: Terminating service groups for "${activeWorkspace.name}"`, 'warning');
+
+      for (const service of activeWorkspace.services) {
+        const proc = managedProcesses.find(
+          (p) => p.commandId === service.id && p.workspaceId === activeWorkspace.id && (p.status === 'running' || p.status === 'starting')
+        );
+        if (proc) {
+          await get().stopManagedProcess(proc.id);
+        }
+      }
+    },
+
+    restartAllServices: async () => {
+      const { activeWorkspace, managedProcesses } = get();
+      if (!activeWorkspace || !activeWorkspace.services) return;
+
+      await get().addSystemLog(`RESTART_ALL_SERVICES_REQUESTED: Restarting active service groups for "${activeWorkspace.name}"`, 'warning');
+
+      for (const service of activeWorkspace.services) {
+        const proc = managedProcesses.find(
+          (p) => p.commandId === service.id && p.workspaceId === activeWorkspace.id && (p.status === 'running' || p.status === 'starting')
+        );
+        if (proc) {
+          await get().restartManagedProcess(proc.id);
+        }
+      }
+    },
+
+    executeQuickAction: async (action: any) => {
+      const activeWorkspace = get().activeWorkspace;
+      if (!activeWorkspace) return;
+
+      await get().addSystemLog(`QUICK_ACTION_TRIGGERED: Executing "${action.label}"`, 'info');
+
+      if (action.type === 'openFolder') {
+        await get().openWorkspaceInIDE('folder');
+      } else if (action.type === 'previewUrl') {
+        if (action.url) {
+          get().setPreviewUrlOverride(action.url);
+        }
+      } else if (action.type === 'command') {
+        if (action.command) {
+          const shell = 'powershell.exe';
+          const name = action.label;
+          const cwd = activeWorkspace.rootPath || 'E:\\AgentDeck';
+          await get().createTerminal(name, shell, cwd, action.command);
+        }
+      } else if (action.type === 'startService') {
+        if (action.serviceId && activeWorkspace.services) {
+          const service = activeWorkspace.services.find(s => s.id === action.serviceId);
+          if (service) {
+            const isRunning = get().managedProcesses.some(
+              p => p.commandId === service.id && p.workspaceId === activeWorkspace.id && (p.status === 'running' || p.status === 'starting')
+            );
+            if (isRunning) {
+              const runningProc = get().managedProcesses.find(
+                p => p.commandId === service.id && p.workspaceId === activeWorkspace.id && (p.status === 'running' || p.status === 'starting')
+              );
+              if (runningProc) {
+                set({ activeTerminalTabId: runningProc.id });
+              }
+            } else {
+              await get().startManagedProcess(service);
+            }
+          }
+        }
+      }
     }
   };
 });

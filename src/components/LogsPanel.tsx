@@ -4,7 +4,7 @@ import { ShieldAlert, Cpu, Info, CheckCircle2, Terminal } from 'lucide-react';
 
 export const LogsPanel: React.FC = () => {
   const { systemLogs, runtimeLogs } = useWorkspaceStore();
-  const [activeTab, setActiveTab] = useState<'safety' | 'runtime' | 'process'>('safety');
+  const [activeTab, setActiveTab] = useState<'safety' | 'runtime' | 'process'>('process');
 
   const getLogIcon = (type: string) => {
     switch (type) {

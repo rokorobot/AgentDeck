@@ -28,7 +28,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setCurrentTab }) =
     createTerminal,
     addWorkspaceFolder,
     workspaceObservability,
-    pollPortsHealth
+    pollPortsHealth,
+    executeQuickAction,
+    managedProcesses,
+    terminalSessions
   } = useWorkspaceStore();
 
   const [customTerminalOpen, setCustomTerminalOpen] = useState(false);
@@ -105,9 +108,37 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setCurrentTab }) =
             </span>
           </div>
         </div>
+
+        {/* Quick Actions List */}
+        {isActive && ws.quickActions && ws.quickActions.length > 0 && (
+          <div className="pl-5 pt-1.5 space-y-1 ml-3 border-l border-gray-800/80">
+            <div className="text-[9px] uppercase text-gray-600 font-mono font-bold tracking-wider mb-1">Quick Actions</div>
+            <div className="grid grid-cols-1 gap-1">
+              {ws.quickActions.map((action) => (
+                <button
+                  key={action.id}
+                  onClick={() => executeQuickAction(action)}
+                  className="w-full text-left text-[10px] font-mono text-gray-400 hover:text-blue-400 hover:bg-blue-950/20 border border-transparent hover:border-blue-900/30 px-1.5 py-0.5 rounded transition-all flex items-center gap-1 shrink-0"
+                >
+                  <span className="text-blue-500 font-bold">›</span>
+                  <span>{action.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   };
+
+  const runningServicesCount = managedProcesses.filter(p => p.status === 'running').length;
+  const hasPowerShell = terminalSessions.some(s => s.name.toLowerCase().includes('powershell') || s.shell.toLowerCase().includes('powershell'));
+  const hasWSL = terminalSessions.some(s => s.name.toLowerCase().includes('wsl') || s.shell.toLowerCase().includes('wsl'));
+  const totalProcessesCount = terminalSessions.length + runningServicesCount;
+
+  const isPort3000Online = !!workspaceObservability['sound-machina']?.apiOnline;
+  const isPort8000Online = !!workspaceObservability['tm4']?.apiOnline;
+  const isPort5173Online = !!workspaceObservability['robotstore']?.apiOnline;
 
   return (
     <div 
@@ -246,6 +277,67 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setCurrentTab }) =
       {/* Operator Status Widget footer */}
       <div className="p-3 border-t border-[#1F2937] bg-[#0d131f]/60 space-y-2 text-xs">
         
+        {/* Runtime Dashboard Card */}
+        <div className="p-2 rounded bg-[#0B0F14] border border-gray-800 space-y-1.5 font-mono">
+          <div className="text-[10px] text-gray-500 uppercase font-semibold tracking-wider flex items-center gap-1.5 border-b border-gray-900 pb-1">
+            <Activity className="w-3.5 h-3.5 text-blue-400" />
+            <span>Runtime Dashboard</span>
+          </div>
+          
+          <div className="space-y-1 text-[11px]">
+            <div className="flex justify-between">
+              <span className="text-gray-500">Services:</span>
+              <span className="text-blue-400 font-bold">{runningServicesCount}</span>
+            </div>
+            
+            <div className="space-y-0.5 border-l border-gray-800/80 pl-2 ml-1">
+              <div className="flex justify-between">
+                <span className="text-gray-500">PowerShell:</span>
+                <span className={hasPowerShell ? 'text-green-400 font-bold' : 'text-gray-600'}>
+                  {hasPowerShell ? 'Active' : 'Inactive'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">WSL:</span>
+                <span className={hasWSL ? 'text-green-400 font-bold' : 'text-gray-600'}>
+                  {hasWSL ? 'Active' : 'Inactive'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Ollama:</span>
+                <span className={ollamaStatus.running ? 'text-green-400 font-bold' : 'text-red-500 font-bold'}>
+                  {ollamaStatus.running ? 'Online' : 'Offline'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex justify-between pt-1 border-t border-gray-950">
+              <span className="text-gray-500">Memory:</span>
+              <span className="text-gray-400">N/A</span>
+            </div>
+
+            <div className="flex justify-between">
+              <span className="text-gray-500">Processes:</span>
+              <span className="text-blue-400 font-bold">{totalProcessesCount}</span>
+            </div>
+
+            <div className="pt-1 border-t border-gray-950">
+              <div className="text-[10px] text-gray-500 uppercase font-semibold mb-1">Ports:</div>
+              <div className="grid grid-cols-3 gap-1 text-center text-[10px]">
+                <div className={`p-0.5 rounded border ${isPort3000Online ? 'bg-green-950/20 text-green-400 border-green-900/40 font-bold' : 'bg-gray-950/40 text-gray-600 border-transparent'}`}>
+                  3000 {isPort3000Online ? '✓' : '×'}
+                </div>
+                <div className={`p-0.5 rounded border ${isPort8000Online ? 'bg-green-950/20 text-green-400 border-green-900/40 font-bold' : 'bg-gray-950/40 text-gray-600 border-transparent'}`}>
+                  8000 {isPort8000Online ? '✓' : '×'}
+                </div>
+                <div className={`p-0.5 rounded border ${isPort5173Online ? 'bg-green-950/20 text-green-400 border-green-900/40 font-bold' : 'bg-gray-950/40 text-gray-600 border-transparent'}`}>
+                  5173 {isPort5173Online ? '✓' : '×'}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Ollama Status Widget */}
         <div className="p-2 rounded bg-[#0B0F14] border border-gray-800">
           <div className="flex items-center justify-between">

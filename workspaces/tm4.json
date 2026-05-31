@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "agentdeck.workspace.v1",
+  "schemaVersion": "agentdeck.workspace.v2",
   "id": "tm4",
   "name": "TM4 Studio",
   "rootPath": "E:\\AgentDeck",
@@ -8,12 +8,43 @@
     "type": "http",
     "url": "http://localhost:8000"
   },
-  "commands": [
+  "services": [
     {
-      "id": "start-backend",
-      "label": "Start API Backend",
+      "id": "api",
+      "label": "API Backend",
       "shell": "powershell.exe",
       "command": "echo 'uvicorn main:app --reload'"
+    },
+    {
+      "id": "worker",
+      "label": "Worker",
+      "shell": "powershell.exe",
+      "command": "echo 'python worker.py'"
+    }
+  ],
+  "quickActions": [
+    {
+      "id": "start-api",
+      "label": "Start API",
+      "type": "startService",
+      "serviceId": "api"
+    },
+    {
+      "id": "start-worker",
+      "label": "Start Worker",
+      "type": "startService",
+      "serviceId": "worker"
+    },
+    {
+      "id": "open-dashboard",
+      "label": "Open Dashboard",
+      "type": "previewUrl",
+      "url": "http://localhost:8000/dashboard"
+    },
+    {
+      "id": "open-folder",
+      "label": "Open Folder",
+      "type": "openFolder"
     }
   ],
   "terminals": [

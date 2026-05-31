@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "agentdeck.workspace.v1",
+  "schemaVersion": "agentdeck.workspace.v2",
   "id": "sound-machina",
   "name": "Sound Machina",
   "rootPath": "E:\\AgentDeck",
@@ -8,12 +8,43 @@
     "type": "http",
     "url": "http://localhost:3000"
   },
-  "commands": [
+  "services": [
     {
-      "id": "start-engine",
-      "label": "Start Sound Engine",
+      "id": "frontend",
+      "label": "Frontend",
+      "shell": "powershell.exe",
+      "command": "echo 'npm run dev'"
+    },
+    {
+      "id": "backend",
+      "label": "Backend",
       "shell": "powershell.exe",
       "command": "echo 'python sound_engine.py'"
+    }
+  ],
+  "quickActions": [
+    {
+      "id": "generate-track",
+      "label": "Generate Track",
+      "type": "command",
+      "command": "echo 'Generating music track...' && timeout 3"
+    },
+    {
+      "id": "start-backend",
+      "label": "Start Backend",
+      "type": "startService",
+      "serviceId": "backend"
+    },
+    {
+      "id": "open-prompt-engine",
+      "label": "Open Prompt Engine",
+      "type": "previewUrl",
+      "url": "http://localhost:3000/prompt-engine"
+    },
+    {
+      "id": "open-folder",
+      "label": "Open Folder",
+      "type": "openFolder"
     }
   ],
   "terminals": [

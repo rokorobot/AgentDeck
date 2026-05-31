@@ -24,7 +24,11 @@ export const App: React.FC = () => {
     openWorkspaceInIDE,
     terminalWidthPercent,
     logsHeightPercent,
-    updatePanelDimensions
+    updatePanelDimensions,
+    startManagedProcess,
+    startAllServices,
+    stopAllServices,
+    restartAllServices
   } = useWorkspaceStore();
 
   const [currentTab, setCurrentTab] = useState('terminals');
@@ -230,6 +234,98 @@ export const App: React.FC = () => {
                     </div>
                   );
                 })}
+              </div>
+            )}
+
+            {/* Manifest v2 Services (Group Controls + Individual) */}
+            {activeWorkspace?.services && activeWorkspace.services.length > 0 && (
+              <div className="flex items-center gap-2.5 pl-3 border-l border-[#1F2937] shrink-0 font-mono text-[10px]">
+                {/* Global Group Orchestration buttons */}
+                <div className="flex items-center gap-1.5 bg-[#111827] px-2 py-0.5 rounded border border-[#1f2937]">
+                  <span className="text-[9px] uppercase tracking-wider text-gray-500 font-semibold mr-1">Group:</span>
+                  
+                  <button
+                    onClick={startAllServices}
+                    className="hover:text-green-400 text-gray-400 p-1 flex items-center gap-1 transition-colors font-bold"
+                    title="Start all services"
+                  >
+                    <Play className="w-3 h-3 fill-current text-green-500" />
+                    <span className="text-[9.5px]">START</span>
+                  </button>
+
+                  <span className="text-gray-700">|</span>
+
+                  <button
+                    onClick={restartAllServices}
+                    className="hover:text-amber-400 text-gray-400 p-1 flex items-center gap-1 transition-colors font-bold"
+                    title="Restart active services"
+                  >
+                    <RefreshCw className="w-3 h-3 text-amber-500" />
+                    <span className="text-[9.5px]">RESTART</span>
+                  </button>
+
+                  <span className="text-gray-700">|</span>
+
+                  <button
+                    onClick={stopAllServices}
+                    className="hover:text-red-400 text-gray-400 p-1 flex items-center gap-1 transition-colors font-bold"
+                    title="Stop active services"
+                  >
+                    <Square className="w-3 h-3 fill-current text-red-500" />
+                    <span className="text-[9.5px]">STOP</span>
+                  </button>
+                </div>
+
+                {/* Individual Services */}
+                <span className="text-gray-700">|</span>
+                <span className="text-[9px] uppercase tracking-wider text-gray-500 font-semibold">Services:</span>
+                
+                <div className="flex items-center gap-1.5">
+                  {activeWorkspace.services.map((service) => {
+                    const runningProc = managedProcesses.find(
+                      (p) => p.commandId === service.id && p.workspaceId === activeWorkspace.id && (p.status === 'running' || p.status === 'starting')
+                    );
+                    const isRunning = !!runningProc;
+
+                    return (
+                      <div key={service.id} className="flex items-center gap-1">
+                        {isRunning ? (
+                          <div className="flex items-center gap-1 bg-[#22c55e]/10 border border-[#22c55e]/30 px-1.5 py-0.5 rounded text-[10px] select-none">
+                            <span className="w-1.5 h-1.5 bg-[#22C55E] rounded-full animate-ping mr-1" />
+                            <span className="text-green-400 mr-2 truncate max-w-[80px]">{service.label}</span>
+                            
+                            {/* Restart Action */}
+                            <button
+                              onClick={() => restartManagedProcess(runningProc.id)}
+                              className="text-amber-500 hover:text-amber-400 p-0.5"
+                              title="Restart service"
+                            >
+                              <RefreshCw className="w-3 h-3" />
+                            </button>
+                            
+                            {/* Stop Action */}
+                            <button
+                              onClick={() => stopManagedProcess(runningProc.id)}
+                              className="text-red-500 hover:text-red-400 p-0.5"
+                              title="Stop service"
+                            >
+                              <Square className="w-3 h-3 fill-red-500" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => startManagedProcess(service)}
+                            className="bg-blue-950/20 hover:bg-blue-900/40 text-blue-400 hover:text-blue-300 border border-blue-900/40 px-2 py-0.5 rounded text-[10px] transition-colors font-medium flex items-center gap-1 shrink-0"
+                            title={`Start ${service.label}`}
+                          >
+                            <Play className="w-2.5 h-2.5" />
+                            <span>{service.label}</span>
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 

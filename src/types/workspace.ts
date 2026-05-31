@@ -33,6 +33,24 @@ export interface ManagedProcess {
   exitCode?: number;
 }
 
+export interface WorkspaceService {
+  id: string;
+  label: string;
+  shell: string;
+  command: string;
+  cwd?: string;
+  health?: WorkspaceHealth;
+}
+
+export interface WorkspaceQuickAction {
+  id: string;
+  label: string;
+  type: 'openFolder' | 'previewUrl' | 'command' | 'startService';
+  command?: string;
+  serviceId?: string;
+  url?: string;
+}
+
 export interface Workspace {
   schemaVersion?: string;
   id: string;
@@ -40,7 +58,9 @@ export interface Workspace {
   rootPath: string;
   previewUrl: string;
   health?: WorkspaceHealth;
-  commands?: WorkspaceCommand[];
+  commands?: WorkspaceCommand[]; // Backward compatibility for v1
+  services?: WorkspaceService[];  // For v2
+  quickActions?: WorkspaceQuickAction[]; // For v2
   terminals: TerminalPreset[];
 }
 
