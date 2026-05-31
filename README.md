@@ -2,6 +2,8 @@
 
 ### Workspace Runtime Control Center for AI-Assisted Development
 
+[**Release Notes (v0.6.0)**](docs/release-notes-v0.6.md)
+
 ![AgentDeck Operator Console Dashboard](docs/screenshots/dashboard-active.png)
 
 AgentDeck is a desktop workspace orchestrator that combines terminals, local AI services, browser previews, runtime observability, and project control into a single operator console. 
@@ -169,13 +171,24 @@ npm run dist
 - [x] Pre-checked resilient VS Code, Cursor, and Folder launchers
 - [x] Self-healing ConPTY terminal launch fallbacks
 
-### v0.4: Orchestration (Planned Roadmap)
-- [ ] Workspace template presets
-- [ ] Multi-command service groupings
-- [ ] Concurrent action flows
-- [ ] Runtime workspace snapshots
+### v0.4: Service Orchestration (Implemented)
+- [x] Group commands (`START ALL`, `STOP ALL`, `RESTART ALL`) for services
+- [x] Workspace service-level definitions (Manifest v2)
+- [x] Targeted terminations of managed services
+- [x] Runtime dashboard monitoring service indicators and Ollama state
 
-### v0.5: Agent Workspace Integration (Planned Roadmap)
+### v0.5: Workspace Templates & Manifest Editor (Implemented)
+- [x] Onboarding wizard with Vite, Python, Static, and Custom template presets
+- [x] Full visual `.agentdeck/workspace.json` editor with schema validation
+- [x] Safe manifest writes with atomic swapping and timestamped backups
+- [x] Protection of built-in presets (read-only locking)
+
+### v0.6: Packaging & Release Polish (Implemented)
+- [x] Custom high-contrast squircle app icon
+- [x] Automated electron-builder NSIS installer distribution pipeline
+- [x] Unsigned installer documentation and architectural specifications
+
+### Future: Agent Workspace Integration (Planned Roadmap)
 - [ ] Local LLM execution context logs
 - [ ] Ollama models management HUD
 - [ ] Agent code generation execution monitoring

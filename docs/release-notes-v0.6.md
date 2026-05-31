@@ -6,14 +6,14 @@ This document contains the release notes for **AgentDeck v0.6.0** (along with cu
 
 ## 1. Unsigned Installer Warning (Windows SmartScreen)
 
-Because the AgentDeck Windows installer executable (`.exe`) is built locally and is not digitally signed with a paid Microsoft Developer Certificate, Windows Defender SmartScreen will flag the installer upon first execution.
+AgentDeck v0.6 is currently unsigned. Windows may show a SmartScreen warning for unsigned installers. Only run the installer if you downloaded it directly from the official GitHub release and trust the source.
 
-### How to Bypass the Warning:
+For informational purposes, here are the steps for proceeding with installation if you choose to trust this release:
 1. Double-click the `AgentDeck Setup <version>.exe` installer.
-2. If the **"Windows protected your PC"** SmartScreen overlay appears:
-   - Click the **"More info"** hyperlink.
-   - Click the **"Run anyway"** button that appears at the bottom.
-3. The NSIS installer will initialize, install the application files, create a desktop shortcut, and launch the AgentDeck developer console dashboard scope.
+2. If the **"Windows protected your PC"** SmartScreen warning appears, the option to run is accessed via:
+   - Clicking the **"More info"** hyperlink.
+   - Clicking the **"Run anyway"** button that appears at the bottom of the informational display.
+3. The NSIS installer will initialize, install the application files, create a desktop shortcut, and launch the AgentDeck developer console dashboard.
 
 ---
 

@@ -7,3 +7,6 @@ data/
 .env
 *.log
 .DS_Store
+*.exe
+*.blockmap
+latest.yml
