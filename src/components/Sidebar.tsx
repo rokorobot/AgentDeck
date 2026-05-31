@@ -9,7 +9,9 @@ import {
   Layers,
   ChevronRight,
   Plus,
-  Sliders
+  Sliders,
+  History,
+  RotateCcw
 } from 'lucide-react';
 import { Workspace } from '../types/workspace';
 
@@ -237,6 +239,28 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setCurrentTab }) =
             >
               <Cpu className="w-4 h-4 text-purple-400" />
               <span>Evaluations</span>
+            </button>
+            <button
+              onClick={() => setCurrentTab('timeline')}
+              className={`w-full text-left px-3 py-2 rounded flex items-center gap-2.5 text-sm transition-all ${
+                currentTab === 'timeline' 
+                  ? 'bg-blue-950/40 text-blue-400 border-l-2 border-blue-500 font-medium' 
+                  : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
+              }`}
+            >
+              <History className="w-4 h-4 text-blue-400" />
+              <span>Timeline</span>
+            </button>
+            <button
+              onClick={() => setCurrentTab('replay')}
+              className={`w-full text-left px-3 py-2 rounded flex items-center gap-2.5 text-sm transition-all ${
+                currentTab === 'replay' 
+                  ? 'bg-blue-950/40 text-blue-400 border-l-2 border-blue-500 font-medium' 
+                  : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
+              }`}
+            >
+              <RotateCcw className="w-4 h-4 text-teal-400" />
+              <span>Replay</span>
             </button>
             <button
               onClick={() => setCurrentTab('editor')}

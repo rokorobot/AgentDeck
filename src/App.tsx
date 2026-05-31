@@ -9,6 +9,8 @@ import { ManifestEditor } from './components/ManifestEditor';
 import { NewWorkspaceWizard } from './components/NewWorkspaceWizard';
 import { RuntimeDashboardView } from './components/RuntimeDashboardView';
 import { EvaluationsView } from './components/EvaluationsView';
+import { TimelineView } from './components/TimelineView';
+import { ReplayView } from './components/ReplayView';
 import { X, Play, Square, RefreshCw, FolderOpen, Code, ExternalLink, Sliders } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -38,6 +40,7 @@ export const App: React.FC = () => {
 
   const [currentTab, setCurrentTab] = useState('terminals');
   const [evalsSubTab, setEvalsSubTab] = useState('benchmarks');
+  const [replayEventId, setReplayEventId] = useState<string | null>(null);
   const [localTerminalWidth, setLocalTerminalWidth] = useState(terminalWidthPercent);
   const [localLogsHeight, setLocalLogsHeight] = useState(logsHeightPercent);
 
@@ -409,6 +412,19 @@ export const App: React.FC = () => {
           ) : currentTab === 'evaluations' ? (
             <div className="flex-1 min-h-0">
               <EvaluationsView key={`${activeWorkspace?.id}-${evalsSubTab}`} initialSubTab={evalsSubTab} />
+            </div>
+          ) : currentTab === 'timeline' ? (
+            <div className="flex-1 min-h-0">
+              <TimelineView 
+                onReplaySelect={(eventId) => {
+                  setReplayEventId(eventId);
+                  setCurrentTab('replay');
+                }} 
+              />
+            </div>
+          ) : currentTab === 'replay' ? (
+            <div className="flex-1 min-h-0">
+              <ReplayView selectedEventId={replayEventId} />
             </div>
           ) : currentTab === 'editor' ? (
             <div className="flex-1 min-h-0">

@@ -91,5 +91,11 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('evals:save-judges', { rootPath, presetId, list }),
     savePromotions: (rootPath: string | null, presetId: string, list: any[]) =>
       ipcRenderer.invoke('evals:save-promotions', { rootPath, presetId, list }),
+  },
+  timeline: {
+    loadEvents: (rootPath: string | null, presetId: string) =>
+      ipcRenderer.invoke('timeline:load-events', { rootPath, presetId }),
+    saveEvent: (rootPath: string | null, presetId: string, event: any) =>
+      ipcRenderer.invoke('timeline:save-event', { rootPath, presetId, event }),
   }
 });

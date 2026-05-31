@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { Workspace, ManagedProcess } from '../types/workspace';
 import { checkCommandSafety } from '../lib/commandSafety';
 import { BenchmarkDefinition, RegressionRun, ApprovalQueueItem, FailureCase, GoldStandard, JudgeDefinition, PromotionHistoryRecord, TestCaseRunResult, BenchmarkReport, BenchmarkTestCase } from '../types/evals';
+import { TimelineEvent } from '../types/timeline';
 
 
 // Extend window object types for TypeScript safety
@@ -72,6 +73,10 @@ declare global {
         deleteGoldStandard(rootPath: string | null, presetId: string, id: string): Promise<boolean>;
         saveJudges(rootPath: string | null, presetId: string, list: any[]): Promise<boolean>;
         savePromotions(rootPath: string | null, presetId: string, list: any[]): Promise<boolean>;
+      };
+      timeline: {
+        loadEvents(rootPath: string | null, presetId: string): Promise<any[]>;
+        saveEvent(rootPath: string | null, presetId: string, event: any): Promise<boolean>;
       };
     };
   }
@@ -170,6 +175,17 @@ interface WorkspaceStore {
   saveJudge(judge: JudgeDefinition): Promise<void>;
   deleteJudge(id: string): Promise<void>;
   convertFailureToTestCase(failureId: string, benchmarkId: string, threshold: number): Promise<void>;
+
+  // Timeline State & Actions
+  timelineEvents: TimelineEvent[];
+  addTimelineEvent(
+    type: TimelineEvent['type'],
+    referenceId: string,
+    summary: string,
+    metadata?: any,
+    severity?: TimelineEvent['severity'],
+    actor?: TimelineEvent['actor']
+  ): Promise<void>;
 }
 
 const terminalLineBuffers: Record<string, string> = {};
@@ -206,6 +222,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     judges: [],
     promotions: [],
     isRunningBenchmark: false,
+    timelineEvents: [],
 
     init: async () => {
       // 1. Load layout configs and logs
@@ -639,6 +656,16 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         }));
 
         await get().addSystemLog(`PROCESS_START_REQUESTED: Spawned managed process "${cmd.label}" (PID ${proc.pid})`, 'success');
+        await get().addTimelineEvent(
+          'service_started',
+          proc.id,
+          `Service started: "${cmd.label}" (PID: ${proc.pid})`,
+          {
+            commandId: cmd.id,
+            label: cmd.label,
+            pid: proc.pid
+          }
+        );
       } catch (e) {
         console.error('Failed to spawn process:', e);
       }
@@ -646,6 +673,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
 
     stopManagedProcess: async (runId: string) => {
       try {
+        const proc = get().managedProcesses.find((p) => p.id === runId);
+        const label = proc?.label || runId;
+
         const success = await window.api.process.stop(runId);
         if (success) {
           // Remove from terminal tabs
@@ -660,6 +690,16 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
               activeTerminalTabId: newActive
             };
           });
+
+          await get().addTimelineEvent(
+            'service_stopped',
+            runId,
+            `Service stopped: "${label}"`,
+            {
+              runId,
+              label
+            }
+          );
         }
       } catch (e) {
         console.error('Error stopping managed process:', e);
@@ -909,6 +949,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         });
 
         await get().addSystemLog(`Visual configuration saved for workspace "${config.name}"`, 'success');
+        await get().addTimelineEvent(
+          'manifest_saved',
+          activeWorkspace.id,
+          `Workspace manifest configuration saved for "${config.name}"`,
+          {
+            configSnapshot: config
+          }
+        );
         return { success: true };
       } catch (err: any) {
         console.error('Failed to save workspace config:', err);
@@ -944,6 +992,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
           }
         }
 
+        const timelineEvents = await window.api.timeline.loadEvents(rootPath, presetId);
+
         set({
           benchmarks: data.benchmarks || [],
           regressionRuns: data.runs || [],
@@ -951,6 +1001,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
           goldStandards: data.goldStandards || [],
           judges: data.judges || [],
           promotions: data.promotions || [],
+          timelineEvents: timelineEvents || [],
           approvalQueue: openApprovals
         });
       } catch (err) {
@@ -1132,6 +1183,23 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       } else {
         await get().addSystemLog(`REGRESSION DETECTED: Score dropped to ${newScore} (baseline ${benchmark.baselineScore}, diff ${diff})`, 'error');
       }
+
+      await get().addTimelineEvent(
+        'regression_executed',
+        runId,
+        `Regression run completed for ${benchmark.name}: ${newScore} (baseline: ${benchmark.baselineScore}, diff: ${diff > 0 ? '+' : ''}${diff})`,
+        {
+          benchmarkId,
+          runId,
+          score: newScore,
+          baselineScore: benchmark.baselineScore,
+          diff,
+          failuresCount,
+          passRate,
+          status,
+          runDetails: newRun
+        }
+      );
     },
 
     approveRun: async (approvalId: string) => {
@@ -1160,6 +1228,17 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       });
 
       await get().addSystemLog(`Evals run ${queueItem.runId} marked as APPROVED`, 'success');
+      await get().addTimelineEvent(
+        'run_approved',
+        queueItem.runId,
+        `Evaluations run approved: ${queueItem.title} (${queueItem.previousScore} -> ${queueItem.currentScore})`,
+        {
+          runId: queueItem.runId,
+          benchmarkId: queueItem.benchmarkId,
+          previousScore: queueItem.previousScore,
+          currentScore: queueItem.currentScore
+        }
+      );
     },
 
     rejectRun: async (approvalId: string) => {
@@ -1188,6 +1267,17 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       });
 
       await get().addSystemLog(`Evals run ${queueItem.runId} marked as REJECTED`, 'warning');
+      await get().addTimelineEvent(
+        'run_rejected',
+        queueItem.runId,
+        `Evaluations run rejected: ${queueItem.title} (${queueItem.previousScore} &rarr; ${queueItem.currentScore})`,
+        {
+          runId: queueItem.runId,
+          benchmarkId: queueItem.benchmarkId,
+          previousScore: queueItem.previousScore,
+          currentScore: queueItem.currentScore
+        }
+      );
     },
 
     promoteToBaseline: async (benchmarkId: string, runId: string, reason?: string) => {
@@ -1229,6 +1319,19 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         promotions: updatedPromotions
       });
       await get().addSystemLog(`Promoted score ${run.score} to baseline for benchmark ${benchmarkId}`, 'success');
+      await get().addTimelineEvent(
+        'baseline_promoted',
+        runId,
+        `Baseline target score promoted for ${benchmarkName}: ${oldScore} -> ${run.score}`,
+        {
+          benchmarkId,
+          benchmarkName,
+          oldScore,
+          newScore: run.score,
+          reason: reason || 'Manual promotion override',
+          runId
+        }
+      );
     },
 
     saveFailureCase: async (failure: FailureCase) => {
@@ -1400,6 +1503,93 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
           failures: state.failures.map(f => f.id === failureId ? updatedFailure : f)
         }));
         await get().addSystemLog(`Converted failure case to test case inside benchmark ${benchmarkId}`, 'success');
+        await get().addTimelineEvent(
+          'failure_converted',
+          failureId,
+          `Converted failure case ${failureId} to a test case inside benchmark ${benchmarkId}`,
+          {
+            benchmarkId,
+            testCaseId,
+            prompt: failure.prompt,
+            expected: testCase.expected,
+            threshold
+          }
+        );
+      }
+    },
+
+    addTimelineEvent: async (
+      type: TimelineEvent['type'],
+      referenceId: string,
+      summary: string,
+      metadata?: any,
+      severity?: TimelineEvent['severity'],
+      actor?: TimelineEvent['actor']
+    ) => {
+      const activeWorkspace = get().activeWorkspace;
+      if (!activeWorkspace) return;
+
+      const rootPath = activeWorkspace.rootPath || null;
+      const presetId = activeWorkspace.id;
+
+      // Capture logs snapshot (latest 30 lines max)
+      const logsSnapshot: string[] = [];
+      const runtimeLogs = get().runtimeLogs;
+      const systemLogs = get().systemLogs;
+      
+      const sourceLogs = runtimeLogs.length > 0 ? runtimeLogs : systemLogs;
+      const startIdx = Math.max(0, sourceLogs.length - 30);
+      for (let i = startIdx; i < sourceLogs.length; i++) {
+        const item = sourceLogs[i];
+        if (typeof item === 'string') {
+          logsSnapshot.push(item);
+        } else if (item && typeof item === 'object') {
+          const time = item.timestamp ? `[${new Date(item.timestamp).toLocaleTimeString()}] ` : '';
+          const lvl = item.type ? `[${item.type}] ` : '';
+          logsSnapshot.push(`${time}${lvl}${item.message || JSON.stringify(item)}`);
+        }
+      }
+
+      // Default severity mapping
+      let finalSeverity: TimelineEvent['severity'] = severity || 'info';
+      if (!severity) {
+        if (type === 'baseline_promoted' || type === 'failure_converted' || type === 'run_approved') {
+          finalSeverity = 'success';
+        } else if (type === 'run_rejected') {
+          finalSeverity = 'warning';
+        } else if (type === 'regression_executed') {
+          if (metadata && metadata.failuresCount > 0) {
+            finalSeverity = 'warning';
+          } else {
+            finalSeverity = 'success';
+          }
+        }
+      }
+
+      // Default actor mapping
+      const finalActor: TimelineEvent['actor'] = actor || (type === 'regression_executed' ? 'simulator' : 'operator');
+
+      const event: TimelineEvent = {
+        id: `evt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        schemaVersion: 'agentdeck.timeline.v1',
+        timestamp: new Date().toISOString(),
+        workspaceId: activeWorkspace.id,
+        type,
+        severity: finalSeverity,
+        actor: finalActor,
+        referenceId,
+        summary,
+        metadata: {
+          ...metadata,
+          logsSnapshot
+        }
+      };
+
+      const success = await window.api.timeline.saveEvent(rootPath, presetId, event);
+      if (success) {
+        set(state => ({
+          timelineEvents: [event, ...state.timelineEvents]
+        }));
       }
     }
   };
