@@ -31,10 +31,15 @@ export interface DecisionEvidencePackage {
   };
   finalDecision: 'approve' | 'reject' | 'rollback' | 'quarantine';
   overrideReason?: string;
-  generatedBy: string;
+  createdAt?: string;
   generatedAt: string;
-  approvedBy?: string;
+  reviewedAt?: string;
   approvedAt?: string;
+  exportedAt?: string;
+  generatedBy: string;
+  reviewedBy?: string;
+  approvedBy?: string;
+  exportedBy?: string;
   evidence: EvidenceSection[];
   signatures: SignatureRecord[];
   hash?: string;

@@ -370,7 +370,7 @@ export const DecisionEvidenceView: React.FC = () => {
                       <div className="absolute top-[21px] left-8 right-8 h-[2px] bg-gray-800 z-0">
                         <div 
                           className="h-full bg-blue-500 transition-all duration-500" 
-                          style={{ width: previewDep.evidenceSufficiency === 'pass' ? '80%' : '60%' }} 
+                          style={{ width: '50%' }} 
                         />
                       </div>
 
@@ -380,57 +380,43 @@ export const DecisionEvidenceView: React.FC = () => {
                           ✓
                         </div>
                         <span className="font-semibold text-gray-200">Candidate Created</span>
-                        <span className="text-[8px] text-gray-500">RC-001 Ready</span>
+                        <span className="text-[8px] text-gray-500">By: Operator</span>
                       </div>
 
-                      {/* Step 2: Snapshot */}
+                      {/* Step 2: DEP Generated */}
                       <div className="flex flex-col items-center text-center space-y-1.5 z-10 w-24">
-                        <div className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[9px] ${
-                          getSectionContent(previewDep, 'snapshot-evidence')?.snapshotId !== 'N/A'
-                            ? 'bg-green-950 border border-green-500 text-green-400'
-                            : 'bg-amber-950 border border-amber-500 text-amber-400'
-                        }`}>
-                          {getSectionContent(previewDep, 'snapshot-evidence')?.snapshotId !== 'N/A' ? '✓' : '!'}
+                        <div className="w-5 h-5 rounded-full bg-green-950 border border-green-500 flex items-center justify-center text-green-400 font-bold text-[9px]">
+                          ✓
                         </div>
-                        <span className="font-semibold text-gray-200">Snapshot Linked</span>
-                        <span className="text-[8px] text-gray-500">State Hash Frozen</span>
+                        <span className="font-semibold text-gray-200">DEP Generated</span>
+                        <span className="text-[8px] text-gray-500">By: System</span>
                       </div>
 
-                      {/* Step 3: Evaluation */}
-                      <div className="flex flex-col items-center text-center space-y-1.5 z-10 w-24">
-                        <div className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[9px] ${
-                          getSectionContent(previewDep, 'eval-evidence')?.runId !== 'N/A'
-                            ? 'bg-green-950 border border-green-500 text-green-400'
-                            : 'bg-red-950 border border-red-500 text-red-400'
-                        }`}>
-                          {getSectionContent(previewDep, 'eval-evidence')?.runId !== 'N/A' ? '✓' : 'x'}
-                        </div>
-                        <span className="font-semibold text-gray-200">Suite Executed</span>
-                        <span className="text-[8px] text-gray-500">Score: {getSectionContent(previewDep, 'eval-evidence')?.score}</span>
-                      </div>
-
-                      {/* Step 4: Doctor Run */}
-                      <div className="flex flex-col items-center text-center space-y-1.5 z-10 w-24">
-                        <div className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[9px] ${
-                          getSectionContent(previewDep, 'doctor-report')?.status === 'healthy'
-                            ? 'bg-green-950 border border-green-500 text-green-400'
-                            : getSectionContent(previewDep, 'doctor-report')?.status === 'warning'
-                              ? 'bg-amber-950 border border-amber-500 text-amber-400'
-                              : 'bg-red-950 border border-red-500 text-red-400'
-                        }`}>
-                          {getSectionContent(previewDep, 'doctor-report')?.status === 'healthy' ? '✓' : '!'}
-                        </div>
-                        <span className="font-semibold text-gray-200">Doctor Audit</span>
-                        <span className="text-[8px] text-gray-500">Report Status</span>
-                      </div>
-
-                      {/* Step 5: DEP Draft */}
+                      {/* Step 3: DEP Reviewed */}
                       <div className="flex flex-col items-center text-center space-y-1.5 z-10 w-24">
                         <div className="w-5 h-5 rounded-full bg-blue-950 border border-blue-500 text-blue-400 flex items-center justify-center font-bold text-[9px] animate-pulse">
                           •
                         </div>
-                        <span className="font-semibold text-gray-200">DEP Compiled</span>
-                        <span className="text-[8px] text-gray-500">Integrity Ready</span>
+                        <span className="font-semibold text-gray-200">DEP Reviewed</span>
+                        <span className="text-[8px] text-gray-500">By: Operator (Draft)</span>
+                      </div>
+
+                      {/* Step 4: DEP Approved */}
+                      <div className="flex flex-col items-center text-center space-y-1.5 z-10 w-24">
+                        <div className="w-5 h-5 rounded-full bg-gray-900 border border-gray-800 text-gray-600 flex items-center justify-center font-bold text-[9px]">
+                          -
+                        </div>
+                        <span className="font-semibold text-gray-500">DEP Approved</span>
+                        <span className="text-[8px] text-gray-600">Pending Board</span>
+                      </div>
+
+                      {/* Step 5: DEP Exported */}
+                      <div className="flex flex-col items-center text-center space-y-1.5 z-10 w-24">
+                        <div className="w-5 h-5 rounded-full bg-gray-900 border border-gray-800 text-gray-600 flex items-center justify-center font-bold text-[9px]">
+                          -
+                        </div>
+                        <span className="font-semibold text-gray-500">DEP Exported</span>
+                        <span className="text-[8px] text-gray-600">Pending Export</span>
                       </div>
                     </div>
                   </div>
@@ -569,9 +555,7 @@ export const DecisionEvidenceView: React.FC = () => {
                   const verifiedResult = verificationResults[dep.id];
                   const verifying = isVerifying[dep.id];
 
-                  // Safely read section contents
-                  const eData = dep.evidence.find(l => l.layerId === 'eval-evidence')?.content || {};
-                  const sData = dep.evidence.find(l => l.layerId === 'snapshot-evidence')?.content || {};
+
 
                   return (
                     <div key={dep.id} className="bg-[#111827]/30 border border-gray-800 rounded-lg p-4 space-y-4">
@@ -658,32 +642,48 @@ export const DecisionEvidenceView: React.FC = () => {
                       {/* Horizontal progression graph for signed DEP */}
                       <div className="bg-[#0B0F14] border border-gray-850 p-3 rounded-lg space-y-2">
                         <div className="flex justify-between items-center">
-                          <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Finalized Timeline Events</span>
+                          <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">DEP Chain of Custody Timeline</span>
                           <span className="text-[9.5px] text-gray-400">Owner: Release Board</span>
                         </div>
-                        <div className="flex justify-between items-center font-mono text-[9.5px] py-1 border-t border-gray-900">
-                          <div className="flex items-center gap-1">
+                        <div className="flex justify-between items-center font-mono text-[9.5px] py-1 border-t border-gray-900 overflow-x-auto gap-2">
+                          <div className="flex items-center gap-1 shrink-0">
                             <span className="text-green-400 font-bold">✓</span>
                             <span className="text-gray-300">Created:</span>
-                            <span className="text-gray-500">{new Date(dep.generatedAt).toLocaleDateString()}</span>
+                            <span className="text-gray-500">{dep.createdAt ? new Date(dep.createdAt).toLocaleDateString() : 'N/A'}</span>
                           </div>
-                          <ArrowRight className="w-3 h-3 text-gray-700" />
-                          <div className="flex items-center gap-1">
+                          <ArrowRight className="w-3 h-3 text-gray-700 shrink-0" />
+                          <div className="flex items-center gap-1 shrink-0">
                             <span className="text-green-400 font-bold">✓</span>
-                            <span className="text-gray-300">Run:</span>
-                            <code className="bg-gray-950 px-1 rounded text-blue-400">{eData.runId || 'N/A'}</code>
+                            <span className="text-gray-300">Generated:</span>
+                            <span className="text-gray-500">{dep.generatedAt ? new Date(dep.generatedAt).toLocaleDateString() : 'N/A'}</span>
                           </div>
-                          <ArrowRight className="w-3 h-3 text-gray-700" />
-                          <div className="flex items-center gap-1">
+                          <ArrowRight className="w-3 h-3 text-gray-700 shrink-0" />
+                          <div className="flex items-center gap-1 shrink-0">
                             <span className="text-green-400 font-bold">✓</span>
-                            <span className="text-gray-300">State:</span>
-                            <code className="bg-gray-950 px-1 rounded text-purple-400">snap-{sData.snapshotId?.slice(-4) || 'N/A'}</code>
+                            <span className="text-gray-300">Reviewed:</span>
+                            <span className="text-gray-500">{dep.reviewedAt ? new Date(dep.reviewedAt).toLocaleDateString() : 'N/A'}</span>
                           </div>
-                          <ArrowRight className="w-3 h-3 text-gray-700" />
-                          <div className="flex items-center gap-1">
+                          <ArrowRight className="w-3 h-3 text-gray-700 shrink-0" />
+                          <div className="flex items-center gap-1 shrink-0">
                             <span className="text-green-400 font-bold">✓</span>
-                            <span className="text-gray-300">Signed:</span>
+                            <span className="text-gray-300">Approved:</span>
                             <span className="text-green-400 font-semibold">{dep.approvedAt ? new Date(dep.approvedAt).toLocaleDateString() : 'N/A'}</span>
+                          </div>
+                          <ArrowRight className="w-3 h-3 text-gray-700 shrink-0" />
+                          <div className="flex items-center gap-1 shrink-0">
+                            {dep.exportedAt ? (
+                              <>
+                                <span className="text-green-400 font-bold">✓</span>
+                                <span className="text-gray-300">Exported:</span>
+                                <span className="text-green-400">{new Date(dep.exportedAt).toLocaleDateString()}</span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="text-gray-600 font-bold">•</span>
+                                <span className="text-gray-500">Export:</span>
+                                <span className="text-gray-600">Pending</span>
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>
