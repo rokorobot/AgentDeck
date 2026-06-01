@@ -16,7 +16,10 @@ export interface TimelineEvent {
     | 'release_candidate_created'
     | 'release_candidate_approved'
     | 'release_candidate_rejected'
-    | 'release_candidate_released';
+    | 'release_candidate_released'
+    | 'snapshot_created'
+    | 'snapshot_restored'
+    | 'snapshot_restore_blocked';
   severity: 'info' | 'success' | 'warning' | 'error';
   actor: 'operator' | 'system' | 'simulator';
   isSeeded?: boolean;

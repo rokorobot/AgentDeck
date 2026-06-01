@@ -8,10 +8,12 @@ import {
   Fingerprint,
   Activity,
   Lock,
-  Shield
+  Shield,
+  History
 } from 'lucide-react';
 import { GovernancePolicy, ReleaseCandidate } from '../types/governance';
 import { runGovernanceIntegrityCheck } from '../lib/governanceIntegrity';
+import { DecisionEvidenceView } from './DecisionEvidenceView';
 
 export const GovernanceView: React.FC = () => {
   const { 
@@ -24,7 +26,8 @@ export const GovernanceView: React.FC = () => {
     timelineEvents,
     regressionRuns,
     promotions,
-    sealGovernanceRecords
+    sealGovernanceRecords,
+    provenanceList
   } = useWorkspaceStore();
 
   const [minScore, setMinScore] = useState(governancePolicies?.minScore || 0.80);
@@ -33,7 +36,7 @@ export const GovernanceView: React.FC = () => {
   
   const [notesText, setNotesText] = useState<Record<string, string>>({});
   const [isEditingPolicies, setIsEditingPolicies] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState<'queue' | 'health'>('queue');
+  const [activeSubTab, setActiveSubTab] = useState<'queue' | 'health' | 'provenance' | 'decision'>('queue');
 
   if (!activeWorkspace) {
     return (
@@ -145,6 +148,28 @@ export const GovernanceView: React.FC = () => {
           ) : (
             <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
           )}
+        </button>
+        <button
+          onClick={() => setActiveSubTab('provenance')}
+          className={`px-3 py-1 rounded transition-all flex items-center gap-1.5 ${
+            activeSubTab === 'provenance'
+              ? 'bg-blue-950/40 text-blue-400 border border-blue-900/40 font-bold'
+              : 'text-gray-400 hover:text-gray-200 hover:bg-gray-900/30'
+          }`}
+        >
+          <History className="w-3.5 h-3.5" />
+          <span>Causality & Provenance</span>
+        </button>
+        <button
+          onClick={() => setActiveSubTab('decision')}
+          className={`px-3 py-1 rounded transition-all flex items-center gap-1.5 ${
+            activeSubTab === 'decision'
+              ? 'bg-blue-950/40 text-blue-400 border border-blue-900/40 font-bold'
+              : 'text-gray-400 hover:text-gray-200 hover:bg-gray-900/30'
+          }`}
+        >
+          <Shield className="w-3.5 h-3.5 text-blue-500" />
+          <span>Decision Evidence (DEP)</span>
         </button>
       </div>
 
@@ -312,6 +337,60 @@ export const GovernanceView: React.FC = () => {
           </div>
 
         </div>
+      ) : activeSubTab === 'provenance' ? (
+        <div className="flex-1 overflow-y-auto pr-1 font-mono text-xs max-w-4xl space-y-4">
+          <div className="flex items-center gap-2 mb-4 bg-purple-950/20 text-purple-400 p-3 rounded border border-purple-900/40">
+            <History className="w-5 h-5" />
+            <div>
+              <div className="font-bold uppercase tracking-wider text-sm">Causality Ledger</div>
+              <div className="text-[10px] text-gray-400">Immutable record of state mutations, configuration changes, and operational origins.</div>
+            </div>
+          </div>
+          
+          {provenanceList.length === 0 ? (
+            <div className="p-8 text-center text-xs text-gray-600 border border-dashed border-gray-800 rounded bg-[#111827]/10">
+              No causality records found.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {provenanceList.map(record => (
+                <div key={record.id} className="p-3 bg-[#111827]/30 border border-gray-800 rounded-lg space-y-2">
+                  <div className="flex justify-between items-center border-b border-gray-900/50 pb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="bg-purple-950/40 text-purple-400 border border-purple-900/40 px-2 py-0.5 rounded text-[9px] font-bold uppercase">{record.mutationType.replace(/_/g, ' ')}</span>
+                      <span className="text-gray-400">Target: <strong className="text-gray-300">{record.sourceType} ({record.sourceId})</strong></span>
+                    </div>
+                    <span className="text-[10px] text-gray-500">{new Date(record.timestamp).toLocaleString()}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 pt-1">
+                    <div className="space-y-1">
+                      <span className="text-[9px] uppercase font-bold text-gray-500">Before</span>
+                      <pre className="bg-gray-950/50 border border-gray-900 p-2 rounded text-[10px] text-gray-400 overflow-x-auto">
+                        {JSON.stringify(record.before, null, 2)}
+                      </pre>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[9px] uppercase font-bold text-gray-500">After</span>
+                      <pre className="bg-gray-950/50 border border-gray-900 p-2 rounded text-[10px] text-green-400/80 overflow-x-auto">
+                        {JSON.stringify(record.after, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                  {record.integrityStatus && record.integrityStatus !== 'verified' && (
+                    <div className="pt-2 border-t border-gray-900/50 text-[10px]">
+                      <span className="text-gray-500 mr-2">Integrity Status:</span>
+                      <span className={`font-bold uppercase ${record.integrityStatus === 'tampered' ? 'text-red-500' : 'text-amber-500'}`}>
+                        {record.integrityStatus}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : activeSubTab === 'decision' ? (
+        <DecisionEvidenceView />
       ) : (
         <div className="flex-1 grid grid-cols-1 xl:grid-cols-3 gap-6 overflow-y-auto pr-1">
           

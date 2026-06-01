@@ -12,6 +12,8 @@ import { EvaluationsView } from './components/EvaluationsView';
 import { TimelineView } from './components/TimelineView';
 import { ReplayView } from './components/ReplayView';
 import { GovernanceView } from './components/GovernanceView';
+import { SnapshotsView } from './components/SnapshotsView';
+import { DoctorView } from './components/DoctorView';
 import { X, Play, Square, RefreshCw, FolderOpen, Code, ExternalLink, Sliders } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -430,6 +432,14 @@ export const App: React.FC = () => {
           ) : currentTab === 'governance' ? (
             <div className="flex-1 min-h-0">
               <GovernanceView />
+            </div>
+          ) : currentTab === 'snapshots' ? (
+            <div className="flex-1 min-h-0">
+              <SnapshotsView />
+            </div>
+          ) : currentTab === 'doctor' ? (
+            <div className="flex-1 min-h-0">
+              <DoctorView />
             </div>
           ) : currentTab === 'editor' ? (
             <div className="flex-1 min-h-0">

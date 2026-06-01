@@ -12,7 +12,9 @@ import {
   Sliders,
   History,
   RotateCcw,
-  ShieldCheck
+  ShieldCheck,
+  Archive,
+  HeartPulse
 } from 'lucide-react';
 import { Workspace } from '../types/workspace';
 
@@ -35,7 +37,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setCurrentTab }) =
     pollPortsHealth,
     executeQuickAction,
     managedProcesses,
-    terminalSessions
+    terminalSessions,
+    doctorReport
   } = useWorkspaceStore();
 
   const [customTerminalOpen, setCustomTerminalOpen] = useState(false);
@@ -273,6 +276,39 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setCurrentTab }) =
             >
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
               <span>Governance</span>
+            </button>
+            <button
+              onClick={() => setCurrentTab('snapshots')}
+              className={`w-full text-left px-3 py-2 rounded flex items-center gap-2.5 text-sm transition-all ${
+                currentTab === 'snapshots' 
+                  ? 'bg-blue-950/40 text-blue-400 border-l-2 border-blue-500 font-medium' 
+                  : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
+              }`}
+            >
+              <Archive className="w-4 h-4 text-blue-400" />
+              <span>Snapshot Engine</span>
+            </button>
+            <button
+              onClick={() => setCurrentTab('doctor')}
+              className={`w-full text-left px-3 py-2 rounded flex items-center justify-between text-sm transition-all ${
+                currentTab === 'doctor' 
+                  ? 'bg-blue-950/40 text-blue-400 border-l-2 border-blue-500 font-medium' 
+                  : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <HeartPulse className={`w-4 h-4 ${
+                  doctorReport?.status === 'critical' ? 'text-red-500 animate-pulse' :
+                  doctorReport?.status === 'warning' ? 'text-amber-500' :
+                  'text-blue-400'
+                }`} />
+                <span>Workspace Doctor</span>
+              </div>
+              {doctorReport && doctorReport.status !== 'healthy' && (
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                  doctorReport.status === 'critical' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] animate-pulse' : 'bg-amber-500'
+                }`} />
+              )}
             </button>
             <button
               onClick={() => setCurrentTab('editor')}

@@ -105,5 +105,46 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('governance:save-policies', { rootPath, presetId, policies }),
     saveCandidates: (rootPath: string | null, presetId: string, list: any[]) =>
       ipcRenderer.invoke('governance:save-candidates', { rootPath, presetId, list }),
+  },
+  snapshots: {
+    loadAll: (rootPath: string | null, presetId: string) =>
+      ipcRenderer.invoke('snapshots:load-all', { rootPath, presetId }),
+    create: (rootPath: string | null, presetId: string, description: string, type: string, payload: any, parentSnapshotId?: string) =>
+      ipcRenderer.invoke('snapshots:create', { rootPath, presetId, description, type, payload, parentSnapshotId }),
+    restore: (rootPath: string | null, presetId: string, snapshotId: string) =>
+      ipcRenderer.invoke('snapshots:restore', { rootPath, presetId, snapshotId }),
+    loadPayload: (rootPath: string | null, presetId: string, snapshotId: string) =>
+      ipcRenderer.invoke('snapshots:load-payload', { rootPath, presetId, snapshotId })
+  },
+  provenance: {
+    loadAll: (rootPath: string | null, presetId: string) =>
+      ipcRenderer.invoke('provenance:load-all', { rootPath, presetId }),
+    recordMutation: (rootPath: string | null, presetId: string, record: any) =>
+      ipcRenderer.invoke('provenance:record-mutation', { rootPath, presetId, record }),
+    seal: (rootPath: string | null, presetId: string) =>
+      ipcRenderer.invoke('provenance:seal', { rootPath, presetId })
+  },
+  doctor: {
+    runChecks: (rootPath: string | null, presetId: string) =>
+      ipcRenderer.invoke('doctor:run-checks', { rootPath, presetId }),
+    repair: (rootPath: string | null, presetId: string, checkId: string) =>
+      ipcRenderer.invoke('doctor:repair', { rootPath, presetId, checkId }),
+    exportDiagnosticBundle: (rootPath: string | null, presetId: string) =>
+      ipcRenderer.invoke('doctor:export-diagnostic-bundle', { rootPath, presetId })
+  },
+  dep: {
+    generate: (rootPath: string | null, presetId: string, candidateId: string) =>
+      ipcRenderer.invoke('dep:generate', { rootPath, presetId, candidateId }),
+    signAndSave: (rootPath: string | null, presetId: string, dep: any, decisionRationale: string, decisionClass: string, overrideReason?: string) =>
+      ipcRenderer.invoke('dep:sign-and-save', { rootPath, presetId, dep, decisionRationale, decisionClass, overrideReason }),
+    loadAll: (rootPath: string | null, presetId: string) =>
+      ipcRenderer.invoke('dep:load-all', { rootPath, presetId }),
+    verify: (rootPath: string | null, presetId: string, depId: string) =>
+      ipcRenderer.invoke('dep:verify', { rootPath, presetId, depId }),
+    exportJson: (rootPath: string | null, presetId: string, depId: string) =>
+      ipcRenderer.invoke('dep:export-json', { rootPath, presetId, depId }),
+    exportMarkdown: (rootPath: string | null, presetId: string, depId: string) =>
+      ipcRenderer.invoke('dep:export-markdown', { rootPath, presetId, depId })
   }
 });
+
