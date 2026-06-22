@@ -428,7 +428,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       const spawnedSessions: TerminalSessionState[] = [];
       let firstTabId: string | null = null;
 
-      for (const preset of workspace.terminals) {
+      for (const preset of workspace.terminals ?? []) {
         const termId = `term-${workspace.id}-${preset.name.toLowerCase().replace(/\s+/g, '-')}`;
         const cwd = workspace.rootPath || 'E:\\AgentDeck';
 
