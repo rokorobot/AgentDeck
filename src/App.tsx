@@ -41,6 +41,8 @@ export const App: React.FC = () => {
     approvalQueue
   } = useWorkspaceStore();
 
+  const isBrowserMode = (window as any).api?.isMock;
+
   const [currentTab, setCurrentTab] = useState('terminals');
   const [evalsSubTab, setEvalsSubTab] = useState('benchmarks');
   const [replayEventId, setReplayEventId] = useState<string | null>(null);
@@ -155,6 +157,13 @@ export const App: React.FC = () => {
       {/* 2. Main Dashboard Observer Context */}
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         
+        {isBrowserMode && (
+          <div className="bg-amber-950/20 border-b border-amber-900/30 px-4 py-1.5 text-center text-xs text-amber-400 font-mono flex items-center justify-center gap-2 shrink-0">
+            <span>⚠️</span>
+            <span><strong>Web-Browser Fallback Mode:</strong> Local desk integrations (dialogs, TTY terminals, IDE launch) are mock-only. Use the desktop Electron app for full native control.</span>
+          </div>
+        )}
+
         {/* Top Observability Health Cards Strip */}
         <div className="bg-[#0e131f] border-b border-[#1F2937] px-4 py-2 flex items-center justify-between gap-4">
           <div className="flex-1 flex items-center gap-4 overflow-x-auto min-w-0">
