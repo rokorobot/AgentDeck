@@ -187,18 +187,23 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setCurrentTab }) =
           <div className="flex items-center justify-between text-[11px] font-mono text-gray-500 uppercase tracking-wider mb-2 px-2">
             <span>Discovered Projects</span>
             <button
+              type="button"
               onClick={addWorkspaceFolder}
-              className="text-gray-500 hover:text-blue-400 transition-colors"
+              className="text-gray-500 hover:text-blue-400 transition-colors p-1 rounded hover:bg-gray-800/30"
               title="Add Workspace Project Folder"
             >
-              <FolderOpen className="w-3.5 h-3.5" />
+              <FolderOpen className="w-3.5 h-3.5 pointer-events-none" />
             </button>
           </div>
           <div className="space-y-3">
             {discoveredWorkspaces.length === 0 ? (
-              <div className="text-[10px] text-gray-600 font-mono italic px-3 py-1 bg-gray-900/30 rounded border border-gray-900 border-dashed">
+              <button
+                type="button"
+                onClick={addWorkspaceFolder}
+                className="w-full text-left text-[10px] text-gray-600 hover:text-gray-400 hover:bg-gray-900/50 hover:border-gray-800 transition-colors font-mono italic px-3 py-2 bg-gray-900/30 rounded border border-gray-900 border-dashed cursor-pointer"
+              >
                 No active directories. Click folder to discover.
-              </div>
+              </button>
             ) : (
               discoveredWorkspaces.map(renderWorkspaceItem)
             )}

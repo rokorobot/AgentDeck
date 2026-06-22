@@ -210,14 +210,21 @@ ipcMain.handle('terminal:kill', async (_event, id: string) => {
 
 // --- Native Folder Dialog ---
 ipcMain.handle('dialog:open-directory', async () => {
-  if (!mainWindow) return null;
-  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openDirectory'],
-  });
-  if (canceled) {
+  console.log('[Electron Main] dialog:open-directory IPC received');
+  const win = BrowserWindow.getFocusedWindow() || mainWindow;
+  try {
+    const result = win
+      ? await dialog.showOpenDialog(win, { properties: ['openDirectory'] })
+      : await dialog.showOpenDialog({ properties: ['openDirectory'] });
+    console.log('[Electron Main] dialog:open-directory result:', result);
+    if (result.canceled) {
+      return null;
+    } else {
+      return result.filePaths[0];
+    }
+  } catch (error) {
+    console.error('[Electron Main] Error showing open dialog:', error);
     return null;
-  } else {
-    return filePaths[0];
   }
 });
 

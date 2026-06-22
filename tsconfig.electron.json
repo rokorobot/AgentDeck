@@ -4,7 +4,6 @@
     "module": "CommonJS",
     "moduleResolution": "node",
     "outDir": "dist-electron",
-    "rootDir": "electron",
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "strict": true,

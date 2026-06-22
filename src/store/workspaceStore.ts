@@ -600,8 +600,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     },
 
     addWorkspaceFolder: async () => {
+      console.log('[AgentDeck] Discover folder clicked');
       try {
         const folderPath = await window.api.workspaces.openDirectory();
+        console.log('[AgentDeck] selected folder:', folderPath);
         if (!folderPath) return;
 
         const { workspacePaths, workspaces } = get();
