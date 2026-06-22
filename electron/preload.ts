@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('workspace:initialize', { folderPath, name, previewUrl, templateId }),
     save: (id: string, rootPath: string, config: any) =>
       ipcRenderer.invoke('workspace:save', { id, rootPath, config }),
+    scanAgentTopology: (rootPath: string) =>
+      ipcRenderer.invoke('workspace:scanAgentTopology', rootPath),
   },
   layout: {
     save: (layout: any) => ipcRenderer.invoke('layout:save', layout),

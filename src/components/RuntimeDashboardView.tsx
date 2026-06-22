@@ -15,8 +15,10 @@ import {
   Brain,
   Plus,
   Trash2,
-  X
+  X,
+  Sparkles
 } from 'lucide-react';
+import { AgentTopologyWizard } from './AgentTopologyWizard';
 
 export const RuntimeDashboardView: React.FC = () => {
   const {
@@ -48,6 +50,7 @@ export const RuntimeDashboardView: React.FC = () => {
   const [modelName, setModelName] = useState('gemini-1.5-pro');
   const [selectedTools, setSelectedTools] = useState<string[]>(['terminal', 'files']);
   const [formError, setFormError] = useState('');
+  const [isTopologyWizardOpen, setIsTopologyWizardOpen] = useState(false);
 
   const handleCreateAgent = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -149,14 +152,24 @@ export const RuntimeDashboardView: React.FC = () => {
             <Brain className="w-4 h-4 text-blue-500" />
             <span>Workspace Agents</span>
           </div>
-          <button
-            type="button"
-            onClick={() => setIsAddAgentOpen(true)}
-            className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs px-2.5 py-1 transition-all font-semibold shadow-md active:scale-95"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Add Agent</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsTopologyWizardOpen(true)}
+              className="flex items-center gap-1.5 bg-gradient-to-r from-blue-700 to-indigo-700 hover:from-blue-600 hover:to-indigo-600 text-white rounded text-xs px-2.5 py-1 transition-all font-semibold shadow-md active:scale-95 border border-blue-500/20"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Suggest Agents</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsAddAgentOpen(true)}
+              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs px-2.5 py-1 transition-all font-semibold shadow-md active:scale-95"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Agent</span>
+            </button>
+          </div>
         </div>
 
         {(!activeWorkspace?.agents || activeWorkspace.agents.length === 0) ? (
@@ -669,6 +682,11 @@ export const RuntimeDashboardView: React.FC = () => {
           </div>
         </div>
       )}
+
+      <AgentTopologyWizard
+        isOpen={isTopologyWizardOpen}
+        onClose={() => setIsTopologyWizardOpen(false)}
+      />
 
       </div>
 

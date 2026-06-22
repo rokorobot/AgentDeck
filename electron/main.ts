@@ -8,6 +8,7 @@ import { processManager } from './processManager';
 import { exec } from 'child_process';
 import { setLogWindow, addSystemLogInternal } from './logger';
 import { validateManifest } from '../src/lib/manifestValidation';
+import { scanAgentTopologyInternal } from '../src/lib/topologyScanner';
 
 let mainWindow: BrowserWindow | null = null;
 const terminalManager = new TerminalManager();
@@ -426,6 +427,15 @@ ipcMain.handle('workspace:save', async (_event, { id, rootPath, config }) => {
   } catch (error: any) {
     console.error('Failed to save workspace config:', error);
     return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('workspace:scanAgentTopology', async (_event, rootPath: string) => {
+  try {
+    return scanAgentTopologyInternal(rootPath);
+  } catch (error: any) {
+    console.error('Failed to scan workspace:', error);
+    throw error;
   }
 });
 

@@ -41,6 +41,71 @@ if (typeof window !== 'undefined' && !((window as any).api)) {
       checkConfig: async () => ({ exists: false }),
       initialize: async () => ({ success: false, error: 'Not available in browser mode.' }),
       save: async (_id: string, _rootPath: string, config: any) => ({ success: true, workspace: config }),
+      scanAgentTopology: async (rootPath: string) => {
+        const workspaceId = rootPath.split(/[\\/]/).pop() || 'unknown';
+        const detectedFrom: string[] = ['React frontend', 'Vite project', 'TypeScript'];
+        const suggestedAgents: any[] = [
+          {
+            id: 'react_ui_agent',
+            name: 'React UI Agent',
+            role: 'Maintains React interface, dashboard components, modal flows, state wiring, and user-facing workspace screens.',
+            reason: 'Detected React frontend files, Vite config, or react dependency.',
+            tools: ['terminal', 'browser', 'files'],
+            modelBinding: { provider: 'anthropic', model: 'claude-sonnet' }
+          }
+        ];
+
+        if (workspaceId === 'tm4' || rootPath.includes('AgentDeck_TestWorkspace')) {
+          detectedFrom.push('Backend code', 'Test scripts', 'Documentation folder');
+          suggestedAgents.push(
+            {
+              id: 'backend_agent',
+              name: 'Backend Agent',
+              role: 'Maintains API routes, backend services, persistence, validation, and server-side architecture.',
+              reason: 'Detected backend directory, Python files, FastAPI reference, or dependency configuration.',
+              tools: ['terminal', 'files', 'logs'],
+              modelBinding: { provider: 'openai', model: 'gpt-5.5' }
+            },
+            {
+              id: 'testing_agent',
+              name: 'Testing Agent',
+              role: 'Reviews test coverage, proposes verification scenarios, tracks acceptance criteria, and validates release boundaries.',
+              reason: 'Detected test folder, test spec files, or test scripts configured in package.json.',
+              tools: ['terminal', 'files', 'git'],
+              modelBinding: { provider: 'openai', model: 'gpt-5.5' }
+            },
+            {
+              id: 'documentation_agent',
+              name: 'Documentation Agent',
+              role: 'Maintains project state, release notes, architecture docs, and decision records.',
+              reason: 'Detected project documentation folder or design markdown files.',
+              tools: ['files'],
+              modelBinding: { provider: 'openai', model: 'gpt-5.5' }
+            }
+          );
+        }
+
+        if (workspaceId === 'sound-machina') {
+          detectedFrom.push('Backend code');
+          suggestedAgents.push({
+            id: 'backend_agent',
+            name: 'Backend Agent',
+            role: 'Maintains API routes, backend services, persistence, validation, and server-side architecture.',
+            reason: 'Detected backend directory, Python files, FastAPI reference, or dependency configuration.',
+            tools: ['terminal', 'files', 'logs'],
+            modelBinding: { provider: 'openai', model: 'gpt-5.5' }
+          });
+        }
+
+        return {
+          id: `suggest_${Date.now()}`,
+          workspaceId,
+          detectedFrom,
+          confidence: suggestedAgents.length >= 3 ? 'high' : 'medium',
+          suggestedAgents,
+          createdAt: new Date().toISOString()
+        };
+      }
     },
     layout: {
       save: async () => true,

@@ -38,3 +38,25 @@ export interface AgentWindow {
   title: string;
   state: "open" | "minimized" | "closed";
 }
+
+export type AgentTopologySuggestion = {
+  id: string;
+  workspaceId: string;
+  detectedFrom: string[];
+  confidence: "low" | "medium" | "high";
+  suggestedAgents: SuggestedAgent[];
+  createdAt: string;
+};
+
+export type SuggestedAgent = {
+  id: string;
+  name: string;
+  role: string;
+  reason: string;
+  tools: AgentTool[];
+  modelBinding: {
+    provider: string;
+    model: string;
+  };
+};
+
