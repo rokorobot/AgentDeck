@@ -1,3 +1,5 @@
+import { Agent } from './agent';
+
 export interface TerminalPreset {
   name: string;
   shell: string;
@@ -62,6 +64,7 @@ export interface Workspace {
   services?: WorkspaceService[];  // For v2
   quickActions?: WorkspaceQuickAction[]; // For v2
   terminals: TerminalPreset[];
+  agents?: Agent[];
 }
 
 export interface SystemLogEntry {

@@ -40,7 +40,7 @@ if (typeof window !== 'undefined' && !((window as any).api)) {
       loadFromPath: async () => null,
       checkConfig: async () => ({ exists: false }),
       initialize: async () => ({ success: false, error: 'Not available in browser mode.' }),
-      save: async () => ({ success: false, error: 'Not available in browser mode.' }),
+      save: async (id: string, rootPath: string, config: any) => ({ success: true, workspace: config }),
     },
     layout: {
       save: async () => true,

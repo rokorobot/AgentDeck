@@ -10,7 +10,12 @@ import {
   Terminal, 
   HardDrive,
   CheckCircle2,
-  Clock
+  Clock,
+  User,
+  Brain,
+  Plus,
+  Trash2,
+  X
 } from 'lucide-react';
 
 export const RuntimeDashboardView: React.FC = () => {
@@ -25,10 +30,61 @@ export const RuntimeDashboardView: React.FC = () => {
     restartManagedProcess,
     startManagedProcess,
     checkOllama,
-    pollPortsHealth
+    pollPortsHealth,
+    agentSessions,
+    addAgent,
+    removeAgent,
+    startAgentSession,
+    stopAgentSession
   } = useWorkspaceStore();
 
   const [selectedProcessLogId, setSelectedProcessLogId] = useState<string>('all');
+
+  // Agent Form State
+  const [isAddAgentOpen, setIsAddAgentOpen] = useState(false);
+  const [agentName, setAgentName] = useState('');
+  const [agentRole, setAgentRole] = useState('');
+  const [modelProvider, setModelProvider] = useState('gemini');
+  const [modelName, setModelName] = useState('gemini-1.5-pro');
+  const [selectedTools, setSelectedTools] = useState<string[]>(['terminal', 'files']);
+  const [formError, setFormError] = useState('');
+
+  const handleCreateAgent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError('');
+
+    if (!agentName.trim()) {
+      setFormError('Agent Name is required.');
+      return;
+    }
+    if (!agentRole.trim()) {
+      setFormError('Agent Role and responsibilities are required.');
+      return;
+    }
+    if (!modelName.trim()) {
+      setFormError('Model Name is required.');
+      return;
+    }
+
+    try {
+      await addAgent(
+        agentName,
+        agentRole,
+        { provider: modelProvider, model: modelName },
+        selectedTools as any[]
+      );
+      
+      // Reset form
+      setAgentName('');
+      setAgentRole('');
+      setModelProvider('gemini');
+      setModelName('gemini-1.5-pro');
+      setSelectedTools(['terminal', 'files']);
+      setIsAddAgentOpen(false);
+    } catch (err: any) {
+      setFormError(err.message || 'Failed to assign agent.');
+    }
+  };
 
   const runningServicesCount = managedProcesses.filter(p => p.status === 'running').length;
   
@@ -86,6 +142,116 @@ export const RuntimeDashboardView: React.FC = () => {
   return (
     <div className="flex flex-col h-full bg-[#0B0F14] text-[#E5E7EB] font-sans p-4 space-y-4 overflow-y-auto border border-[#1F2937] rounded">
       
+      {/* Workspace Agents Panel */}
+      <div className="space-y-3 shrink-0">
+        <div className="flex items-center justify-between border-b border-gray-800 pb-2">
+          <div className="flex items-center gap-2 font-mono text-xs font-bold uppercase text-gray-400 tracking-wider">
+            <Brain className="w-4 h-4 text-blue-500" />
+            <span>Workspace Agents</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsAddAgentOpen(true)}
+            className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs px-2.5 py-1 transition-all font-semibold shadow-md active:scale-95"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add Agent</span>
+          </button>
+        </div>
+
+        {(!activeWorkspace?.agents || activeWorkspace.agents.length === 0) ? (
+          <div className="p-6 text-center text-xs text-gray-500 border border-dashed border-gray-800 rounded bg-[#111827]/10 font-mono">
+            No agents assigned to this workspace. Click "Add Agent" to define a worker.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {activeWorkspace.agents.map((agent) => {
+              const session = agentSessions.find(s => s.agentId === agent.id && s.workspaceId === activeWorkspace.id);
+              const isActive = agent.status === 'active' || !!session;
+
+              return (
+                <div 
+                  key={agent.id} 
+                  className={`p-3 bg-[#111827]/40 border rounded flex flex-col justify-between space-y-3 transition-all ${
+                    isActive 
+                      ? 'border-blue-500/50 shadow-md shadow-blue-500/5 bg-[#111827]/60' 
+                      : 'border-gray-800 hover:border-gray-700'
+                  }`}
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <div className="font-semibold text-gray-200 text-xs flex items-center gap-1.5">
+                        <User className="w-3.5 h-3.5 text-blue-400" />
+                        <span>{agent.name}</span>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
+                        isActive
+                          ? 'bg-green-950 text-green-400 border border-green-900/40 animate-pulse'
+                          : 'bg-gray-950 text-gray-500 border border-gray-900'
+                      }`}>
+                        {isActive ? 'ACTIVE' : 'IDLE'}
+                      </span>
+                    </div>
+
+                    <div className="text-[10px] text-gray-400 font-mono leading-relaxed line-clamp-2">
+                      <span className="text-gray-500 font-bold uppercase text-[9px] tracking-wider block">Role</span>
+                      {agent.role}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-1 border-t border-gray-900/40 font-mono text-[9px]">
+                      <div>
+                        <span className="text-gray-600 block uppercase tracking-wider">Model Binding</span>
+                        <span className="text-blue-400 font-medium truncate block" title={agent.modelBinding.model}>
+                          {agent.modelBinding.provider.toUpperCase()}: {agent.modelBinding.model}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600 block uppercase tracking-wider">Available Tools</span>
+                        <span className="text-gray-400 truncate block" title={agent.tools.join(', ')}>
+                          {agent.tools.join(', ')}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-900/40 shrink-0 font-mono text-[10px]">
+                    <button
+                      type="button"
+                      onClick={() => removeAgent(agent.id)}
+                      className="text-gray-500 hover:text-red-400 p-1 transition-colors flex items-center gap-1"
+                      title="Remove Agent"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete</span>
+                    </button>
+
+                    {isActive && session ? (
+                      <button
+                        type="button"
+                        onClick={() => stopAgentSession(session.id)}
+                        className="bg-red-950/40 hover:bg-red-900/60 text-red-400 border border-red-900/40 px-2 py-1 rounded transition-colors flex items-center gap-1 font-bold active:scale-95"
+                      >
+                        <Square className="w-3.5 h-3.5 fill-red-400/25" />
+                        <span>STOP SESSION</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => startAgentSession(agent.id)}
+                        className="bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-900/40 px-2.5 py-1 rounded transition-colors flex items-center gap-1 font-bold active:scale-95"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-blue-400/25" />
+                        <span>START SESSION</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* 1. Telemetry Dashboard Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3 shrink-0">
         
@@ -362,6 +528,147 @@ export const RuntimeDashboardView: React.FC = () => {
             )}
           </div>
         </div>
+
+      {/* Add Agent Modal */}
+      {isAddAgentOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm select-none font-sans">
+          <div className="bg-[#111827] border border-[#1F2937] w-full max-w-md rounded-lg overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#1F2937] bg-[#0d131f]/60 font-mono">
+              <div className="flex items-center gap-2">
+                <Brain className="w-5 h-5 text-blue-500" />
+                <h3 className="font-semibold text-gray-200 text-sm uppercase tracking-wide">
+                  Assign Agent Worker
+                </h3>
+              </div>
+              <button 
+                onClick={() => setIsAddAgentOpen(false)} 
+                className="text-gray-500 hover:text-gray-300 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleCreateAgent} className="p-5 space-y-4 font-mono text-xs">
+              {formError && (
+                <div className="p-2.5 rounded bg-red-950/20 border border-red-900/40 text-red-400 font-mono flex items-start gap-2">
+                  <ShieldAlert className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                  <span>{formError}</span>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">
+                    Agent Name
+                  </label>
+                  <input
+                    type="text"
+                    value={agentName}
+                    onChange={(e) => setAgentName(e.target.value)}
+                    className="w-full bg-[#0B0F14] border border-gray-800 focus:border-blue-500 focus:outline-none px-3 py-2 text-gray-300 rounded font-medium transition-colors"
+                    placeholder="e.g. Test Runner Agent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">
+                    Role & Responsibilities
+                  </label>
+                  <input
+                    type="text"
+                    value={agentRole}
+                    onChange={(e) => setAgentRole(e.target.value)}
+                    className="w-full bg-[#0B0F14] border border-gray-800 focus:border-blue-500 focus:outline-none px-3 py-2 text-gray-300 rounded font-medium transition-colors"
+                    placeholder="e.g. Run tests and report diagnostics"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">
+                      Model Provider
+                    </label>
+                    <select
+                      value={modelProvider}
+                      onChange={(e) => setModelProvider(e.target.value)}
+                      className="w-full bg-[#0B0F14] border border-gray-800 focus:border-blue-500 focus:outline-none px-3 py-2 text-gray-300 rounded transition-colors"
+                    >
+                      <option value="gemini">Gemini</option>
+                      <option value="openai">OpenAI</option>
+                      <option value="anthropic">Anthropic</option>
+                      <option value="ollama">Ollama (Local)</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">
+                      Model Name
+                    </label>
+                    <input
+                      type="text"
+                      value={modelName}
+                      onChange={(e) => setModelName(e.target.value)}
+                      className="w-full bg-[#0B0F14] border border-gray-800 focus:border-blue-500 focus:outline-none px-3 py-2 text-gray-300 rounded transition-colors"
+                      placeholder="e.g. gemini-1.5-pro"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1.5">
+                    Available Tools
+                  </label>
+                  <div className="grid grid-cols-3 gap-2 bg-[#0B0F14]/50 border border-gray-850 p-2.5 rounded font-sans">
+                    {(['terminal', 'browser', 'files', 'git', 'logs'] as const).map((tool) => {
+                      const isChecked = selectedTools.includes(tool);
+                      return (
+                        <label 
+                          key={tool} 
+                          className="flex items-center gap-1.5 cursor-pointer text-[11px] text-gray-300 hover:text-white"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedTools([...selectedTools, tool]);
+                              } else {
+                                setSelectedTools(selectedTools.filter(t => t !== tool));
+                              }
+                            }}
+                            className="rounded bg-[#0B0F14] border-gray-800 text-blue-600 focus:ring-blue-500/20"
+                          />
+                          <span className="capitalize">{tool}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#1F2937]">
+                <button
+                  type="button"
+                  onClick={() => setIsAddAgentOpen(false)}
+                  className="px-4 py-2 border border-gray-800 hover:border-gray-700 hover:bg-gray-800/30 text-gray-400 hover:text-gray-200 rounded text-xs transition-colors font-medium font-mono"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs transition-all font-semibold flex items-center gap-1 shadow-lg shadow-blue-500/10 active:scale-95 font-mono"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Assign Agent</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       </div>
 

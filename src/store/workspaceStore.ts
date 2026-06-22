@@ -7,6 +7,7 @@ import { GovernancePolicy, ReleaseCandidate } from '../types/governance';
 import { SnapshotManifest, SnapshotPayload } from '../types/snapshot';
 import { DoctorReport } from '../types/doctor';
 import { DecisionEvidencePackage } from '../types/decisionEvidence';
+import { Agent, AgentSession, AgentWindow, AgentTool, AgentModelBinding } from '../types/agent';
 
 
 // Extend window object types for TypeScript safety
@@ -280,6 +281,15 @@ interface WorkspaceStore {
   }>;
   exportDecisionEvidenceJson(depId: string): Promise<{ success: boolean; filePath?: string; error?: string }>;
   exportDecisionEvidenceMarkdown(depId: string): Promise<{ success: boolean; filePath?: string; error?: string }>;
+
+  // Agent Workspace State & Actions
+  agentSessions: AgentSession[];
+  agentWindows: AgentWindow[];
+  addAgent(name: string, role: string, modelBinding: AgentModelBinding, tools: AgentTool[]): Promise<void>;
+  updateAgent(agentId: string, patch: Partial<Agent>): Promise<void>;
+  removeAgent(agentId: string): Promise<void>;
+  startAgentSession(agentId: string): Promise<void>;
+  stopAgentSession(sessionId: string): Promise<void>;
 }
 
 const terminalLineBuffers: Record<string, string> = {};
@@ -323,6 +333,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     provenanceList: [],
     doctorReport: null,
     decisionEvidenceList: [],
+    agentSessions: [],
+    agentWindows: [],
 
     init: async () => {
       // 1. Load layout configs and logs
@@ -2290,6 +2302,147 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       const rootPath = activeWorkspace.rootPath || null;
       const presetId = activeWorkspace.id;
       return await window.api.dep.exportMarkdown(rootPath, presetId, depId);
+    },
+
+    addAgent: async (name: string, role: string, modelBinding: AgentModelBinding, tools: AgentTool[]) => {
+      const { activeWorkspace, workspaces } = get();
+      if (!activeWorkspace) return;
+
+      const newAgent: Agent = {
+        id: `agent_${Date.now()}`,
+        workspaceId: activeWorkspace.id,
+        name,
+        role,
+        status: 'idle',
+        modelBinding,
+        tools,
+        createdAt: new Date().toISOString()
+      };
+
+      const updatedWorkspace = {
+        ...activeWorkspace,
+        agents: [...(activeWorkspace.agents || []), newAgent]
+      };
+
+      const res = await get().saveActiveWorkspace(updatedWorkspace);
+      if (res.success) {
+        set({
+          activeWorkspace: updatedWorkspace,
+          workspaces: workspaces.map(w => w.id === activeWorkspace.id ? updatedWorkspace : w)
+        });
+        await get().addSystemLog(`Added agent "${name}" to workspace.`, 'success');
+      }
+    },
+
+    updateAgent: async (agentId: string, patch: Partial<Agent>) => {
+      const { activeWorkspace, workspaces } = get();
+      if (!activeWorkspace || !activeWorkspace.agents) return;
+
+      const updatedAgents = activeWorkspace.agents.map(a => 
+        a.id === agentId ? { ...a, ...patch } as Agent : a
+      );
+
+      const updatedWorkspace = {
+        ...activeWorkspace,
+        agents: updatedAgents
+      };
+
+      const res = await get().saveActiveWorkspace(updatedWorkspace);
+      if (res.success) {
+        set({
+          activeWorkspace: updatedWorkspace,
+          workspaces: workspaces.map(w => w.id === activeWorkspace.id ? updatedWorkspace : w)
+        });
+      }
+    },
+
+    removeAgent: async (agentId: string) => {
+      const { activeWorkspace, workspaces } = get();
+      if (!activeWorkspace || !activeWorkspace.agents) return;
+
+      const updatedAgents = activeWorkspace.agents.filter(a => a.id !== agentId);
+      const updatedWorkspace = {
+        ...activeWorkspace,
+        agents: updatedAgents
+      };
+
+      const res = await get().saveActiveWorkspace(updatedWorkspace);
+      if (res.success) {
+        set({
+          activeWorkspace: updatedWorkspace,
+          workspaces: workspaces.map(w => w.id === activeWorkspace.id ? updatedWorkspace : w)
+        });
+        await get().addSystemLog(`Removed agent from workspace.`, 'info');
+      }
+    },
+
+    startAgentSession: async (agentId: string) => {
+      const { activeWorkspace } = get();
+      if (!activeWorkspace || !activeWorkspace.agents) return;
+
+      const agent = activeWorkspace.agents.find(a => a.id === agentId);
+      if (!agent) return;
+
+      const sessionId = `session_${Date.now()}`;
+      const termName = `${agent.name} Shell`;
+      const cwd = activeWorkspace.rootPath || 'C:\\Users\\Robert\\AgentDeck';
+      const shell = 'powershell.exe';
+
+      // 1. Create a terminal window
+      const termId = await get().createTerminal(termName, shell, cwd);
+
+      // 2. Create the session object
+      const newSession: AgentSession = {
+        id: sessionId,
+        agentId,
+        workspaceId: activeWorkspace.id,
+        modelSnapshot: { ...agent.modelBinding },
+        terminalId: termId,
+        status: 'running',
+        startedAt: new Date().toISOString()
+      };
+
+      // 3. Create the window container definition
+      const newWindow: AgentWindow = {
+        id: `window_${sessionId}_term`,
+        sessionId,
+        workspaceId: activeWorkspace.id,
+        type: 'terminal',
+        title: `${agent.name} Console`,
+        state: 'open'
+      };
+
+      // Update store state
+      set(state => ({
+        agentSessions: [...state.agentSessions, newSession],
+        agentWindows: [...state.agentWindows, newWindow]
+      }));
+
+      // Set agent status to active
+      await get().updateAgent(agentId, { status: 'active' });
+      await get().addSystemLog(`Started session for agent "${agent.name}".`, 'success');
+    },
+
+    stopAgentSession: async (sessionId: string) => {
+      const { agentSessions, agentWindows } = get();
+      const session = agentSessions.find(s => s.id === sessionId);
+      if (!session) return;
+
+      // 1. Kill terminal if it was created
+      if (session.terminalId) {
+        await get().killTerminal(session.terminalId);
+      }
+
+      // 2. Update agent status back to idle
+      await get().updateAgent(session.agentId, { status: 'idle' });
+
+      // 3. Update stores
+      set({
+        agentSessions: agentSessions.filter(s => s.id !== sessionId),
+        agentWindows: agentWindows.filter(w => w.sessionId !== sessionId)
+      });
+
+      await get().addSystemLog(`Stopped session for agent.`, 'info');
     }
   };
 });

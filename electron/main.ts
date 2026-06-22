@@ -385,12 +385,14 @@ ipcMain.handle('workspace:save', async (_event, { id, rootPath, config }) => {
 
     // Determine destination path
     let configPath = '';
-    if (rootPath) {
+    const presetIds = ['tm4', 'sound-machina', 'robotstore'];
+    if (presetIds.includes(id)) {
+      configPath = path.join(WORKSPACES_DIR, `${id}.json`);
+    } else if (rootPath) {
       // Dynamic discovered workspace
       configPath = path.join(rootPath, '.agentdeck', 'workspace.json');
     } else {
-      // Presets are read-only
-      return { success: false, error: 'Built-in presets are read-only.' };
+      return { success: false, error: 'Target workspace root path is missing.' };
     }
 
     // Ensure directory exists
