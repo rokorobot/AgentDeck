@@ -182,9 +182,9 @@ export const SnapshotsView: React.FC = () => {
       case 'verified':
         return <span className="bg-green-950/40 text-green-400 border border-green-900/40 px-2 py-0.5 rounded text-[9px] font-bold">VERIFIED</span>;
       case 'unsigned':
-        return <span className="bg-amber-950/40 text-amber-500 border border-amber-900/40 px-2 py-0.5 rounded text-[9px] font-bold">UNSIGNED / LEGACY</span>;
+        return <span className="bg-amber-950/40 text-amber-500 border border-amber-900/40 px-2 py-0.5 rounded text-[9px] font-bold">NO CHECKSUM / LEGACY</span>;
       case 'tampered':
-        return <span className="bg-red-950/40 text-red-400 border border-red-900/40 px-2 py-0.5 rounded text-[9px] font-bold animate-pulse">TAMPER DETECTED</span>;
+        return <span className="bg-red-950/40 text-red-400 border border-red-900/40 px-2 py-0.5 rounded text-[9px] font-bold animate-pulse">CHECKSUM MISMATCH</span>;
     }
   };
 
@@ -281,7 +281,7 @@ export const SnapshotsView: React.FC = () => {
                           : 'text-gray-500 hover:text-gray-300 border-transparent bg-gray-950/20'
                       }`}
                     >
-                      {status === 'all' ? 'All Status' : status}
+                      {status === 'all' ? 'All Status' : status === 'unsigned' ? 'No Checksum' : status === 'tampered' ? 'Mismatch' : status}
                     </button>
                   ))}
                 </div>
@@ -295,7 +295,7 @@ export const SnapshotsView: React.FC = () => {
               <Info className="w-3.5 h-3.5" />
               <span>Snapshot Mechanics</span>
             </div>
-            Snapshots capture the current state of tests, judges, timeline events, and policies. If hash validation flags a snapshot as <strong className="text-red-400">TAMPER DETECTED</strong>, the engine will block state restoration to preserve data security.
+            Snapshots capture the current state of tests, judges, timeline events, and policies. If checksum validation flags a snapshot as <strong className="text-red-400">CHECKSUM MISMATCH</strong>, the engine will block state restoration to preserve data security. Checksums are unkeyed SHA-256 hashes: they detect accidental corruption and casual edits, not a determined tamperer who can recompute the hash.
           </div>
 
         </div>

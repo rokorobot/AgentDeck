@@ -196,11 +196,11 @@ export const GovernanceView: React.FC = () => {
                 </span>
               </div>
               <p className="text-gray-400 text-[11px]">
-                {healthReport.status === 'healthy' 
-                  ? 'All local governance criteria satisfied. Files sealed and references verified.'
+                {healthReport.status === 'healthy'
+                  ? 'All local governance criteria satisfied. Files checksummed and references verified.'
                   : healthReport.status === 'warning'
-                    ? 'Compliance warning: unsigned legacy records detected. Perform sealing to secure records.'
-                    : 'CRITICAL ERROR: Data integrity checks failed or file tampering has been detected.'}
+                    ? 'Compliance warning: legacy records without an integrity checksum detected. Recompute checksums to update records.'
+                    : 'CRITICAL ERROR: Integrity checks failed — one or more files no longer match their stored checksum.'}
               </p>
             </div>
             
@@ -215,10 +215,10 @@ export const GovernanceView: React.FC = () => {
                     await sealGovernanceRecords();
                   }}
                   className="bg-blue-600 hover:bg-blue-500 text-white rounded px-3 py-1 font-bold text-[10px] transition-all flex items-center gap-1.5"
-                  title="Seal legacy records with fresh hashes"
+                  title="Recompute integrity checksums for legacy records"
                 >
                   <Lock className="w-3 h-3" />
-                  <span>Seal Current Records</span>
+                  <span>Recompute Checksums</span>
                 </button>
               )}
             </div>
@@ -243,7 +243,7 @@ export const GovernanceView: React.FC = () => {
                       ? 'text-amber-500 font-bold'
                       : 'text-red-500 font-bold'
                 }>
-                  {(governancePolicies?.integrityStatus || 'unsigned').toUpperCase()}
+                  {governancePolicies?.integrityStatus === 'verified' ? 'VERIFIED' : governancePolicies?.integrityStatus === 'tampered' ? 'CHECKSUM MISMATCH' : 'NO CHECKSUM'}
                 </span>
               </div>
             </div>
@@ -265,9 +265,9 @@ export const GovernanceView: React.FC = () => {
                       : 'text-green-400 font-bold'
                 }>
                   {releaseCandidates.some(rc => rc.integrityStatus === 'tampered')
-                    ? 'TAMPERED'
+                    ? 'CHECKSUM MISMATCH'
                     : releaseCandidates.some(rc => rc.integrityStatus === 'unsigned')
-                      ? 'UNSIGNED'
+                      ? 'NO CHECKSUM'
                       : 'VERIFIED'}
                 </span>
               </div>
@@ -290,9 +290,9 @@ export const GovernanceView: React.FC = () => {
                       : 'text-green-400 font-bold'
                 }>
                   {timelineEvents.some(e => e.integrityStatus === 'tampered')
-                    ? 'TAMPERED'
+                    ? 'CHECKSUM MISMATCH'
                     : timelineEvents.some(e => e.integrityStatus === 'unsigned')
-                      ? 'UNSIGNED'
+                      ? 'NO CHECKSUM'
                       : 'VERIFIED'}
                 </span>
               </div>
@@ -565,9 +565,9 @@ export const GovernanceView: React.FC = () => {
                           )}
                           {c.integrityStatus && c.integrityStatus !== 'verified' && (
                             <div className="flex justify-between text-gray-400 border-t border-gray-900 pt-1.5">
-                              <span>Integrity Signature:</span>
+                              <span>Integrity Checksum:</span>
                               <span className={`font-bold uppercase ${c.integrityStatus === 'tampered' ? 'text-red-500' : 'text-amber-500'}`}>
-                                {c.integrityStatus}
+                                {c.integrityStatus === 'tampered' ? 'Checksum Mismatch' : 'No Checksum'}
                               </span>
                             </div>
                           )}

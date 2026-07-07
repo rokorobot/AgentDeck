@@ -43,7 +43,7 @@ export const DoctorView: React.FC = () => {
 
   const handleRunChecks = async () => {
     setIsChecking(true);
-    setStatusMessage({ text: 'Scanning workspace files and integrity signatures...', type: 'info' });
+    setStatusMessage({ text: 'Scanning workspace files and integrity checksums...', type: 'info' });
     try {
       await runDoctorChecks();
       setStatusMessage({ text: 'Workspace diagnostic scan complete.', type: 'success' });
@@ -99,7 +99,7 @@ export const DoctorView: React.FC = () => {
       glow: 'shadow-[0_0_15px_rgba(16,185,129,0.05)] border-emerald-500/20',
       icon: <CheckCircle className="w-8 h-8 text-emerald-400" />,
       title: 'System Healthy',
-      desc: 'No corruption, missing folders, or cryptographic seal violations detected. Workspace is operating in full trust mode.'
+      desc: 'No corruption, missing folders, or integrity checksum mismatches detected. Workspace is operating in full trust mode.'
     },
     warning: {
       bg: 'bg-amber-950/20 border-amber-500/30',
@@ -107,7 +107,7 @@ export const DoctorView: React.FC = () => {
       glow: 'shadow-[0_0_15px_rgba(245,158,11,0.05)] border-amber-500/20',
       icon: <AlertTriangle className="w-8 h-8 text-amber-400 animate-pulse" />,
       title: 'Inconsistencies Detected',
-      desc: 'Minor issues found. Some legacy snapshots are unsigned, or orphan references were discovered. Restores are safe, but review is recommended.'
+      desc: 'Minor issues found. Some legacy snapshots have no integrity checksum, or orphan references were discovered. Restores are safe, but review is recommended.'
     },
     critical: {
       bg: 'bg-red-950/20 border-red-500/30',
@@ -115,7 +115,7 @@ export const DoctorView: React.FC = () => {
       glow: 'shadow-[0_0_15px_rgba(239,68,68,0.08)] border-red-500/20 animate-pulse',
       icon: <ShieldAlert className="w-8 h-8 text-red-500 animate-bounce" />,
       title: 'State Integrity Compromised',
-      desc: 'Critical governance schema anomalies, malformed configuration files, or tampered signatures detected. Review evidence logs immediately!'
+      desc: 'Critical governance schema anomalies, malformed configuration files, or checksum mismatches detected. Review evidence logs immediately!'
     }
   }[status];
 
@@ -232,7 +232,7 @@ export const DoctorView: React.FC = () => {
                           
                           {check.id === 'provenance-tamper' && check.details?.tamperedProvIds?.length > 0 && (
                             <div className="text-red-400 mt-1 pl-3 font-semibold font-mono">
-                              * QUARANTINE REQUIRED (tampered records cannot be sealed): {check.details.tamperedProvIds.join(', ')}
+                              * QUARANTINE REQUIRED (records with a checksum mismatch cannot be re-checksummed): {check.details.tamperedProvIds.join(', ')}
                             </div>
                           )}
                         </div>

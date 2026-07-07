@@ -986,7 +986,18 @@ function getTimelineDir(rootPath: string | null, presetId: string): string {
   }
 }
 
-// Helper to compute deterministic SHA-256 hash of an object
+// INTEGRITY MODEL (audit QW2): the "integrity" fields produced here are an
+// UNKEYED, deterministic SHA-256 checksum stored alongside the object. This
+// detects accidental corruption and casual manual edits — it is NOT a digital
+// signature and provides NO tamper resistance against anyone who can recompute
+// the hash after editing (there is no secret key or asymmetric keypair). Do not
+// present these as "cryptographic seals" or "signatures" in user-facing text.
+// TODO(M1.2 / signing): once the threat model is decided, replace with real
+// signing — HMAC-SHA256 keyed by a per-install secret (Electron safeStorage /
+// OS keychain) for local-tamper resistance, or an asymmetric keypair for
+// shareable / team-verifiable governance artifacts.
+//
+// Helper to compute a deterministic SHA-256 integrity checksum of an object
 function computeHash(obj: any): string {
   if (obj === null || obj === undefined) return '';
   
@@ -1853,9 +1864,9 @@ async function runDoctorChecksInternal(rootPath: string | null, presetId: string
           }
           if (verifyHash(rc) === 'tampered') {
             govCheck.status = 'failed';
-            govCheck.message = `Release candidate ${rc.id || 'unknown'} has a tampered signature.`;
+            govCheck.message = `Release candidate ${rc.id || 'unknown'} has a checksum mismatch.`;
             govCheck.repairType = 'remediate';
-            govCheck.repairSuggestion = 'Quarantine tampered candidate record and review system integrity.';
+            govCheck.repairSuggestion = 'Quarantine the candidate record with a checksum mismatch and review system integrity.';
             break;
           }
         }
@@ -1871,12 +1882,12 @@ async function runDoctorChecksInternal(rootPath: string | null, presetId: string
   const snapshotsCheck: any = {
     id: 'snapshots-integrity',
     name: 'Snapshot Manifest Verification',
-    description: 'Scans all snapshot manifests for tampering or missing signatures.',
+    description: 'Scans all snapshot manifests for checksum mismatches or missing checksums.',
     status: 'passed',
     message: 'All snapshots are verified and intact.',
     repairable: true,
     repairType: 'seal',
-    repairSuggestion: 'Seal unsigned snapshot manifests.'
+    repairSuggestion: 'Recompute checksums for snapshot manifests that have none.'
   };
   
   const snapshotsDir = getSnapshotsDir(rootPath, presetId);
@@ -1909,15 +1920,15 @@ async function runDoctorChecksInternal(rootPath: string | null, presetId: string
   
   if (tamperedSnaps.length > 0) {
     snapshotsCheck.status = 'failed';
-    snapshotsCheck.message = `Tampered snapshots detected: ${tamperedSnaps.join(', ')}`;
+    snapshotsCheck.message = `Snapshots with a checksum mismatch: ${tamperedSnaps.join(', ')}`;
     snapshotsCheck.repairType = 'remediate';
-    snapshotsCheck.repairSuggestion = 'Quarantine tampered snapshots and review system logs.';
+    snapshotsCheck.repairSuggestion = 'Quarantine snapshots with a checksum mismatch and review system logs.';
     snapshotsCheck.details = { tamperedSnaps, unsignedSnaps };
   } else if (unsignedSnaps.length > 0) {
     snapshotsCheck.status = 'warning';
-    snapshotsCheck.message = `Unsigned snapshots detected: ${unsignedSnaps.join(', ')}`;
+    snapshotsCheck.message = `Snapshots with no integrity checksum: ${unsignedSnaps.join(', ')}`;
     snapshotsCheck.repairType = 'seal';
-    snapshotsCheck.repairSuggestion = 'Seal unsigned snapshot records with secure signatures.';
+    snapshotsCheck.repairSuggestion = 'Recompute integrity checksums for snapshot records that have none.';
     snapshotsCheck.details = { tamperedSnaps, unsignedSnaps };
   }
   checks.push(snapshotsCheck);
@@ -1925,13 +1936,13 @@ async function runDoctorChecksInternal(rootPath: string | null, presetId: string
   // 4. Tampered provenance records check
   const provenanceCheck: any = {
     id: 'provenance-tamper',
-    name: 'Provenance Cryptographic Seals',
-    description: 'Ensures the provenance mutation ledger has not been tampered with.',
+    name: 'Provenance Integrity Checksums',
+    description: 'Detects checksum mismatches in the provenance mutation ledger.',
     status: 'passed',
     message: 'Provenance ledger is verified and intact.',
     repairable: true,
     repairType: 'seal',
-    repairSuggestion: 'Seal unsigned provenance records.'
+    repairSuggestion: 'Recompute checksums for provenance records that have none.'
   };
   
   const provenancePath = getProvenancePath(rootPath, presetId);
@@ -1961,15 +1972,15 @@ async function runDoctorChecksInternal(rootPath: string | null, presetId: string
   
   if (tamperedProvIds.length > 0) {
     provenanceCheck.status = 'failed';
-    provenanceCheck.message = `Tampered provenance records: ${tamperedProvIds.join(', ')}`;
+    provenanceCheck.message = `Provenance records with a checksum mismatch: ${tamperedProvIds.join(', ')}`;
     provenanceCheck.repairType = 'remediate';
-    provenanceCheck.repairSuggestion = 'Quarantine tampered provenance entries and rebuild clean baseline log.';
+    provenanceCheck.repairSuggestion = 'Quarantine provenance entries with a checksum mismatch and rebuild a clean baseline log.';
     provenanceCheck.details = { tamperedProvIds, unsignedProvIds };
   } else if (unsignedProvIds.length > 0) {
     provenanceCheck.status = 'warning';
-    provenanceCheck.message = `Unsigned provenance records: ${unsignedProvIds.join(', ')}`;
+    provenanceCheck.message = `Provenance records with no integrity checksum: ${unsignedProvIds.join(', ')}`;
     provenanceCheck.repairType = 'seal';
-    provenanceCheck.repairSuggestion = 'Seal unsigned records in provenance ledger.';
+    provenanceCheck.repairSuggestion = 'Recompute checksums for provenance ledger records that have none.';
     provenanceCheck.details = { tamperedProvIds, unsignedProvIds };
   }
   checks.push(provenanceCheck);
@@ -2841,8 +2852,8 @@ ${provChain.records?.length > 0 ? provChain.records.map((r: any, idx: number) =>
 
 ---
 
-## 3. DECISION BOARD SIGNATURES
-${dep.signatures?.length > 0 ? dep.signatures.map((sig: any) => `- **Authority**: ${sig.authority}\n  **Signed At**: ${sig.timestamp}\n  **Cryptographic Seal**: ${sig.hash}`).join('\n') : '*This evidence package has not been signed or finalized yet.*'}
+## 3. DECISION BOARD SIGN-OFFS
+${dep.signatures?.length > 0 ? dep.signatures.map((sig: any) => `- **Authority**: ${sig.authority}\n  **Signed Off At**: ${sig.timestamp}\n  **Integrity Checksum (unkeyed SHA-256)**: ${sig.hash}`).join('\n') : '*This evidence package has not been signed off or finalized yet.*'}
 `;
 }
 
@@ -2988,7 +2999,7 @@ ipcMain.handle('dep:generate', async (_event, { rootPath, presetId, candidateId 
     const layer7 = {
       layerId: 'snapshot-evidence',
       title: 'Workspace Snapshot Linkage',
-      description: 'Identifies the cryptographically signed snapshot of the workspace configuration state.',
+      description: 'Identifies the checksummed snapshot of the workspace configuration state.',
       content: {
         snapshotId: associatedSnapshot ? associatedSnapshot.manifest.snapshotId : 'N/A',
         hash: associatedSnapshot ? associatedSnapshot.manifest.hash : 'N/A',
@@ -3095,8 +3106,8 @@ ipcMain.handle('dep:generate', async (_event, { rootPath, presetId, candidateId 
     // Layer 10: Signatures (Initially Empty)
     const layer10 = {
       layerId: 'signatures',
-      title: 'Authorized Decision Board Signatures',
-      description: 'Cryptographic seals appended by authorized stakeholders.',
+      title: 'Authorized Decision Board Sign-offs',
+      description: 'Integrity checksums (unkeyed SHA-256) appended by authorized stakeholders.',
       content: {
         signatures: []
       }

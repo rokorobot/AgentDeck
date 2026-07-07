@@ -153,7 +153,7 @@ export const DecisionEvidenceView: React.FC = () => {
                 : 'text-gray-400 hover:text-gray-200'
             }`}
           >
-            <span>Signed Registry</span>
+            <span>Sign-off Registry</span>
             <span className="bg-[#1F2937] text-gray-400 text-[9px] px-1.5 py-0.5 rounded-full">
               {decisionEvidenceList.length}
             </span>
@@ -307,7 +307,7 @@ export const DecisionEvidenceView: React.FC = () => {
                     {isSaving ? (
                       <>
                         <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        <span>Signing Board Seal...</span>
+                        <span>Recording Sign-off...</span>
                       </>
                     ) : (
                       <>
@@ -485,7 +485,7 @@ export const DecisionEvidenceView: React.FC = () => {
                     <div className="bg-[#111827]/40 p-4 border border-gray-800 rounded-lg space-y-3">
                       <div className="flex justify-between items-center border-b border-gray-900 pb-2">
                         <span className="font-bold text-gray-400 uppercase tracking-wider text-[9px]">Frozen Compliance Anchors</span>
-                        <span className="text-[9px] text-gray-500">Hash and seals</span>
+                        <span className="text-[9px] text-gray-500">Hashes &amp; checksums</span>
                       </div>
 
                       <div className="space-y-2 text-[10.5px] leading-relaxed text-gray-400">
@@ -543,7 +543,7 @@ export const DecisionEvidenceView: React.FC = () => {
               <div className="flex-1 flex flex-col items-center justify-center text-center text-gray-500 p-8 space-y-3 bg-[#111827]/10 border border-gray-850 rounded-lg">
                 <FileText className="w-12 h-12 text-gray-700" />
                 <div>
-                  <h3 className="font-bold text-gray-400">Signed Compliance Registry Empty</h3>
+                  <h3 className="font-bold text-gray-400">Sign-off Registry Empty</h3>
                   <p className="max-w-md text-[11px] text-gray-600 leading-relaxed pt-1">
                     No finalized Decision Evidence Packages (DEP) detected in the local workspace archive directories.
                   </p>
@@ -626,13 +626,13 @@ export const DecisionEvidenceView: React.FC = () => {
                         </div>
 
                         <div className="space-y-1">
-                          <span className="text-[9px] uppercase font-bold text-gray-500 block">Board Signatures ({dep.signatures.length})</span>
+                          <span className="text-[9px] uppercase font-bold text-gray-500 block">Board Sign-offs ({dep.signatures.length})</span>
                           <div className="bg-[#0B0F14]/50 border border-gray-850 p-2.5 rounded text-[10px] space-y-1 select-text">
                             {dep.signatures.map((sig, idx) => (
                               <div key={idx} className="flex flex-col border-b border-gray-900/60 pb-1 last:border-b-0 last:pb-0 text-gray-400 leading-relaxed">
                                 <span className="text-gray-300 font-semibold">{sig.authority}</span>
-                                <span className="text-[9px] text-gray-500">Signed: {new Date(sig.timestamp).toLocaleString()}</span>
-                                <span className="text-[9.5px] text-blue-400/80 truncate">Seal: {sig.hash}</span>
+                                <span className="text-[9px] text-gray-500">Signed off: {new Date(sig.timestamp).toLocaleString()}</span>
+                                <span className="text-[9.5px] text-blue-400/80 truncate">Checksum: {sig.hash}</span>
                               </div>
                             ))}
                           </div>
@@ -706,13 +706,13 @@ export const DecisionEvidenceView: React.FC = () => {
                                 <span className={verifiedResult.hashValid ? 'text-green-400 font-bold' : 'text-red-400 font-bold'}>
                                   {verifiedResult.hashValid ? '✓' : '✗'}
                                 </span>
-                                <span className="text-gray-500">Hash Seal</span>
+                                <span className="text-gray-500">Content Checksum</span>
                               </div>
                               <div className="flex items-center gap-1">
                                 <span className={verifiedResult.signatureValid ? 'text-green-400 font-bold' : 'text-red-400 font-bold'}>
                                   {verifiedResult.signatureValid ? '✓' : '✗'}
                                 </span>
-                                <span className="text-gray-500">Board Signature</span>
+                                <span className="text-gray-500">Board Sign-off</span>
                               </div>
                               <div className="flex items-center gap-1">
                                 <span className={verifiedResult.rcExists ? 'text-green-400 font-bold' : 'text-red-400 font-bold'}>
@@ -742,7 +742,7 @@ export const DecisionEvidenceView: React.FC = () => {
                               ? 'bg-green-950/40 text-green-400 border border-green-900/40'
                               : 'bg-red-950/40 text-red-400 border border-red-900/40 animate-pulse'
                           }`}>
-                            {verifiedResult.integrityStatus}
+                            {verifiedResult.integrityStatus === 'verified' ? 'Checksum OK' : 'Checksum Mismatch'}
                           </div>
                         )}
                       </div>

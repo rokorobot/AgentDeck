@@ -105,6 +105,36 @@ describe('runGovernanceIntegrityCheck — release candidate checks', () => {
   });
 });
 
+describe('runGovernanceIntegrityCheck — honest checksum wording (QW2)', () => {
+  // Exercise the tampered + unsigned message branches so their strings are produced.
+  const report = run({
+    policies: { schemaVersion: 'agentdeck.governance.v1' } as any, // unsigned -> warning branch
+    releaseCandidates: [
+      { id: 'rc-1', status: 'approved', integrityStatus: 'tampered', benchmarkId: 'b-1', timelineEventId: 'evt-1' },
+    ] as any,
+    timelineEvents: [{ id: 'evt-1', integrityStatus: 'tampered' }] as any,
+    benchmarks: [{ id: 'b-1' }] as any,
+  });
+  const allText = report.checks.map((c) => c.message).join('\n');
+
+  it('never presents the unkeyed checksum as a signature or cryptographic seal', () => {
+    expect(allText).not.toMatch(/signature/i);
+    expect(allText).not.toMatch(/cryptograph/i);
+    expect(allText).not.toMatch(/\bseal(ed|ing|s)?\b/i);
+  });
+
+  it('describes the mechanism as an integrity checksum', () => {
+    expect(allText).toMatch(/checksum/i);
+  });
+
+  it('still derives status from the legacy integrityStatus fields', () => {
+    // Proves the rename did not change behavior: tampered -> fail, unsigned -> warning.
+    expect(check(report, 'policy_integrity')?.status).toBe('warning');
+    expect(check(report, 'candidates_integrity')?.status).toBe('fail');
+    expect(check(report, 'timeline_integrity')?.status).toBe('fail');
+  });
+});
+
 describe('runGovernanceIntegrityCheck — timeline & promotions', () => {
   it('fails timeline integrity on a tampered event', () => {
     const report = run({
