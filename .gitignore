@@ -11,4 +11,5 @@ data/
 *.blockmap
 latest.yml
 .agentdeck/
+coverage/
 

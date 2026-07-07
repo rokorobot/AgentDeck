@@ -1,7 +1,8 @@
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { TerminalManager } from './terminalManager';
 import { BrowserWindow } from 'electron';
 import { addSystemLogInternal } from './logger';
+import { buildTaskkillArgs } from '../src/lib/processKill';
 
 export interface ManagedProcess {
   id: string;
@@ -76,8 +77,9 @@ class ProcessManager {
     addSystemLogInternal(`PROCESS_STOP_REQUESTED: Requesting stop for run "${proc.label}" (PID ${proc.pid})`, 'warning', proc.workspaceId);
 
     return new Promise((resolve) => {
-      // Call taskkill to kill process tree recursively on Windows
-      exec(`taskkill /F /T /PID ${proc.pid}`, (err, stdout, stderr) => {
+      // Call taskkill to kill process tree recursively on Windows.
+      // execFile with an argv array (no shell) — the PID is a literal argument.
+      execFile('taskkill', buildTaskkillArgs(proc.pid), (err) => {
         if (err) {
           console.warn(`taskkill failed for PID ${proc.pid}:`, err.message);
         }

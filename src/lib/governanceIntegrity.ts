@@ -47,17 +47,17 @@ export function runGovernanceIntegrityCheck(params: {
         : `Policy schema version "${policies.schemaVersion}" is invalid.`
     });
 
-    // Policy Tamper Hash check
+    // Policy integrity checksum check
     const policyStatus = policies.integrityStatus || 'unsigned';
     let statusVal: IntegrityCheckResult['status'] = 'pass';
-    let msg = 'Policy file hash signature matches contents (no manual modification detected).';
-    
+    let msg = 'Policy file checksum matches its contents (no manual modification detected).';
+
     if (policyStatus === 'unsigned') {
       statusVal = 'warning';
-      msg = 'Policy file is unsigned (legacy format). Re-saving policies will seal this record.';
+      msg = 'Policy file has no integrity checksum (legacy format). Re-saving policies will compute one.';
     } else if (policyStatus === 'tampered') {
       statusVal = 'fail';
-      msg = 'CRITICAL ERROR: Policy file content hash does not match stored signature. Manual tampering detected.';
+      msg = 'CRITICAL ERROR: Policy file content no longer matches its stored checksum (checksum mismatch).';
     }
 
     checks.push({
@@ -68,7 +68,7 @@ export function runGovernanceIntegrityCheck(params: {
     });
   }
 
-  // 2. Candidate lifecycle validity and tamper detection
+  // 2. Candidate lifecycle validity and checksum mismatch detection
   if (releaseCandidates.length === 0) {
     checks.push({
       id: 'candidates_status',
@@ -104,13 +104,13 @@ export function runGovernanceIntegrityCheck(params: {
     });
 
     let integrityStatusVal: IntegrityCheckResult['status'] = 'pass';
-    let integrityMsg = 'All release candidate records match their tamper verification hashes.';
+    let integrityMsg = 'All release candidate records match their integrity checksums.';
     if (tamperedCandidates > 0) {
       integrityStatusVal = 'fail';
-      integrityMsg = `Detected ${tamperedCandidates} release candidate records with mismatched hashes. Critical tampering detected.`;
+      integrityMsg = `Detected ${tamperedCandidates} release candidate records whose checksum no longer matches; records were modified after checksumming.`;
     } else if (unsignedCandidates > 0) {
       integrityStatusVal = 'warning';
-      integrityMsg = `Detected ${unsignedCandidates} unsigned (legacy) release candidate records. Seal records to compute hashes.`;
+      integrityMsg = `Detected ${unsignedCandidates} release candidate records with no integrity checksum (legacy). Recompute checksums to update them.`;
     }
 
     checks.push({
@@ -191,7 +191,7 @@ export function runGovernanceIntegrityCheck(params: {
     });
   }
 
-  // 5. Timeline integrity (tamper detection)
+  // 5. Timeline integrity (checksum mismatch detection)
   if (timelineEvents.length > 0) {
     let tamperedEvents = 0;
     let unsignedEvents = 0;
@@ -205,13 +205,13 @@ export function runGovernanceIntegrityCheck(params: {
     });
 
     let timelineStatusVal: IntegrityCheckResult['status'] = 'pass';
-    let timelineMsg = 'All event log files match their tamper verification hashes.';
+    let timelineMsg = 'All event log files match their integrity checksums.';
     if (tamperedEvents > 0) {
       timelineStatusVal = 'fail';
-      timelineMsg = `Detected ${tamperedEvents} timeline events with invalid hash signatures. File tampering detected.`;
+      timelineMsg = `Detected ${tamperedEvents} timeline events whose checksum no longer matches (checksum mismatch).`;
     } else if (unsignedEvents > 0) {
       timelineStatusVal = 'warning';
-      timelineMsg = `Detected ${unsignedEvents} unsigned (legacy) timeline events. Seal records to compute hashes.`;
+      timelineMsg = `Detected ${unsignedEvents} timeline events with no integrity checksum (legacy). Recompute checksums to update them.`;
     }
 
     checks.push({

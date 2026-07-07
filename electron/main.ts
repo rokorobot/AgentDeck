@@ -1,14 +1,16 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { TerminalManager } from './terminalManager';
 import { approveCommand } from './commandSafety';
 import { processManager } from './processManager';
-import { exec } from 'child_process';
+import { spawn } from 'child_process';
 import { setLogWindow, addSystemLogInternal } from './logger';
 import { validateManifest } from '../src/lib/manifestValidation';
 import { scanAgentTopologyInternal } from '../src/lib/topologyScanner';
+import { buildIdeOpenCommand, resolveExecutableOnPath, findEditorExecutable, IdeLaunchSpec } from '../src/lib/ideLauncher';
+import { isWorkspaceRootSafe, assertSafeId } from '../src/lib/pathSafety';
 
 let mainWindow: BrowserWindow | null = null;
 const terminalManager = new TerminalManager();
@@ -232,6 +234,7 @@ ipcMain.handle('dialog:open-directory', async () => {
 // --- Dynamic Workspace Loader (.agentdeck/workspace.json) ---
 ipcMain.handle('workspace:load-path', async (_event, folderPath: string) => {
   try {
+    if (!isWorkspaceRootSafe(folderPath)) return null;
     const configPath = path.join(folderPath, '.agentdeck', 'workspace.json');
     if (!fs.existsSync(configPath)) {
       return null;
@@ -250,6 +253,7 @@ ipcMain.handle('workspace:load-path', async (_event, folderPath: string) => {
 // --- Dynamic Workspace Manifest Editor & Wizard Operations ---
 ipcMain.handle('workspace:check-config', async (_event, folderPath: string) => {
   try {
+    if (!isWorkspaceRootSafe(folderPath)) return { exists: false };
     const configPath = path.join(folderPath, '.agentdeck', 'workspace.json');
     return { exists: fs.existsSync(configPath) };
   } catch (e) {
@@ -260,6 +264,9 @@ ipcMain.handle('workspace:check-config', async (_event, folderPath: string) => {
 
 ipcMain.handle('workspace:initialize', async (_event, { folderPath, name, previewUrl, templateId }) => {
   try {
+    if (!isWorkspaceRootSafe(folderPath)) {
+      return { success: false, error: 'Invalid workspace folder. Select an existing absolute folder (no relative, empty, or ".." paths).' };
+    }
     const agentdeckDir = path.join(folderPath, '.agentdeck');
     const configPath = path.join(agentdeckDir, 'workspace.json');
     
@@ -391,6 +398,9 @@ ipcMain.handle('workspace:save', async (_event, { id, rootPath, config }) => {
       configPath = path.join(WORKSPACES_DIR, `${id}.json`);
     } else if (rootPath) {
       // Dynamic discovered workspace
+      if (!isWorkspaceRootSafe(rootPath)) {
+        return { success: false, error: 'Invalid workspace folder. Select an existing absolute folder (no relative, empty, or ".." paths).' };
+      }
       configPath = path.join(rootPath, '.agentdeck', 'workspace.json');
     } else {
       return { success: false, error: 'Target workspace root path is missing.' };
@@ -472,33 +482,81 @@ ipcMain.handle('process:list', async () => {
   return processManager.getProcesses();
 });
 
-// --- Resilient IDE Launcher ---
+// --- Resilient IDE Launcher (hardened: no shell; folderPath passed as literal argv) ---
+// Resolve the concrete image to spawn. On Windows the PATH entry for editors is a
+// `.cmd` shim that cannot be spawned without a shell, so we locate the real .exe
+// beside it; elsewhere the PATH entry is directly executable.
+function resolveEditorTarget(spec: IdeLaunchSpec): string | null {
+  if (process.platform !== 'win32' || !spec.windowsExeName) {
+    return spec.command;
+  }
+  const shim = resolveExecutableOnPath(spec.command, {
+    pathValue: process.env.PATH || process.env.Path || '',
+    pathext: process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD',
+    fileExists: fs.existsSync,
+  });
+  if (!shim) return null;
+  return findEditorExecutable(shim, spec.windowsExeName, fs.existsSync);
+}
+
 ipcMain.handle('ide:open', async (_event, { ide, folderPath }) => {
-  let cmd = '';
-  
-  if (ide === 'vscode') {
-    cmd = `code "${folderPath}"`;
-  } else if (ide === 'cursor') {
-    cmd = `cursor "${folderPath}"`;
-  } else if (ide === 'folder') {
-    cmd = `explorer "${folderPath}"`;
-  } else if (ide === 'antigravity') {
+  if (typeof folderPath !== 'string' || !folderPath.trim()) {
+    return { success: false, error: 'A valid folder path is required.' };
+  }
+
+  // Mock target: no process is launched.
+  if (ide === 'antigravity') {
     addSystemLogInternal(`IDE Open: Mock Antigravity agent opened folder scope "${folderPath}"`, 'success');
     return { success: true };
-  } else {
+  }
+
+  // Folder/Explorer: use the OS opener directly (no shell, correct exit semantics).
+  if (ide === 'folder') {
+    const openErr = await shell.openPath(folderPath);
+    if (openErr) {
+      addSystemLogInternal(`IDE Launcher Error: failed to open folder "${folderPath}": ${openErr}`, 'error');
+      return { success: false, error: openErr };
+    }
+    addSystemLogInternal(`IDE Open: Successfully opened "${folderPath}" in "folder"`, 'success');
+    return { success: true };
+  }
+
+  // Editors: spawn the real executable with folderPath as a single literal argv
+  // entry. shell:false guarantees shell metacharacters in the path are never
+  // interpreted as syntax.
+  const spec = buildIdeOpenCommand(ide, folderPath);
+  if (!spec) {
     return { success: false, error: 'Unknown IDE target' };
   }
 
+  const target = resolveEditorTarget(spec);
+  if (!target) {
+    const msg = `IDE Launcher Error: "${ide}" executable could not be located on your system PATH. Verify it is installed.`;
+    addSystemLogInternal(msg, 'error');
+    return { success: false, error: msg };
+  }
+
   return new Promise((resolve) => {
-    exec(cmd, (err) => {
-      if (err) {
-        console.warn(`[IDE Launcher] Open failed for "${ide}":`, err.message);
-        addSystemLogInternal(`IDE Launcher Error: "${ide}" binary executable failed to run. Verify it is installed and configured in your system environment PATH variables.`, 'error');
-        resolve({ success: false, error: err.message });
-      } else {
-        addSystemLogInternal(`IDE Open: Successfully opened "${folderPath}" in "${ide}"`, 'success');
-        resolve({ success: true });
-      }
+    let settled = false;
+    const child = spawn(target, spec.args, {
+      shell: false,
+      windowsHide: true,
+      detached: true,
+      stdio: 'ignore',
+    });
+    child.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      console.warn(`[IDE Launcher] Open failed for "${ide}":`, err.message);
+      addSystemLogInternal(`IDE Launcher Error: "${ide}" binary executable failed to run. Verify it is installed and configured in your system environment PATH variables.`, 'error');
+      resolve({ success: false, error: err.message });
+    });
+    child.on('spawn', () => {
+      if (settled) return;
+      settled = true;
+      child.unref();
+      addSystemLogInternal(`IDE Open: Successfully opened "${folderPath}" in "${ide}"`, 'success');
+      resolve({ success: true });
     });
   });
 });
@@ -509,7 +567,7 @@ function getEvalsDir(rootPath: string | null, presetId: string): string {
   if (PRESET_IDS.includes(presetId)) {
     return path.join(DATA_DIR, 'presets-evals', presetId);
   }
-  if (rootPath && fs.existsSync(rootPath)) {
+  if (rootPath && isWorkspaceRootSafe(rootPath) && fs.existsSync(rootPath)) {
     return path.join(rootPath, '.agentdeck', 'evals');
   } else {
     return path.join(DATA_DIR, 'presets-evals', presetId);
@@ -824,7 +882,7 @@ ipcMain.handle('evals:save-failure', async (_event, { rootPath, presetId, failur
     if (!fs.existsSync(failuresDir)) {
       fs.mkdirSync(failuresDir, { recursive: true });
     }
-    const filePath = path.join(failuresDir, `failure-${failure.id}.json`);
+    const filePath = path.join(failuresDir, `failure-${assertSafeId(failure.id, 'failure id')}.json`);
     fs.writeFileSync(filePath, JSON.stringify(failure, null, 2), 'utf-8');
     return true;
   } catch (error) {
@@ -836,7 +894,7 @@ ipcMain.handle('evals:save-failure', async (_event, { rootPath, presetId, failur
 ipcMain.handle('evals:delete-failure', async (_event, { rootPath, presetId, failureId }) => {
   try {
     const evalsDir = getEvalsDir(rootPath, presetId);
-    const filePath = path.join(evalsDir, 'failures', `failure-${failureId}.json`);
+    const filePath = path.join(evalsDir, 'failures', `failure-${assertSafeId(failureId, 'failureId')}.json`);
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
       return true;
@@ -870,7 +928,7 @@ ipcMain.handle('evals:save-gold-standard', async (_event, { rootPath, presetId, 
     if (!fs.existsSync(goldStandardsDir)) {
       fs.mkdirSync(goldStandardsDir, { recursive: true });
     }
-    const filePath = path.join(goldStandardsDir, `gold-${item.id}.json`);
+    const filePath = path.join(goldStandardsDir, `gold-${assertSafeId(item.id, 'gold standard id')}.json`);
     fs.writeFileSync(filePath, JSON.stringify(item, null, 2), 'utf-8');
     return true;
   } catch (error) {
@@ -882,7 +940,7 @@ ipcMain.handle('evals:save-gold-standard', async (_event, { rootPath, presetId, 
 ipcMain.handle('evals:delete-gold-standard', async (_event, { rootPath, presetId, id }) => {
   try {
     const evalsDir = getEvalsDir(rootPath, presetId);
-    const filePath = path.join(evalsDir, 'gold-standards', `gold-${id}.json`);
+    const filePath = path.join(evalsDir, 'gold-standards', `gold-${assertSafeId(id, 'gold standard id')}.json`);
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
       return true;
@@ -930,14 +988,25 @@ function getTimelineDir(rootPath: string | null, presetId: string): string {
   if (PRESET_IDS.includes(presetId)) {
     return path.join(DATA_DIR, 'presets-evals', presetId, 'timeline');
   }
-  if (rootPath && fs.existsSync(rootPath)) {
+  if (rootPath && isWorkspaceRootSafe(rootPath) && fs.existsSync(rootPath)) {
     return path.join(rootPath, '.agentdeck', 'timeline');
   } else {
     return path.join(DATA_DIR, 'presets-evals', presetId, 'timeline');
   }
 }
 
-// Helper to compute deterministic SHA-256 hash of an object
+// INTEGRITY MODEL (audit QW2): the "integrity" fields produced here are an
+// UNKEYED, deterministic SHA-256 checksum stored alongside the object. This
+// detects accidental corruption and casual manual edits — it is NOT a digital
+// signature and provides NO tamper resistance against anyone who can recompute
+// the hash after editing (there is no secret key or asymmetric keypair). Do not
+// present these as "cryptographic seals" or "signatures" in user-facing text.
+// TODO(M1.2 / signing): once the threat model is decided, replace with real
+// signing — HMAC-SHA256 keyed by a per-install secret (Electron safeStorage /
+// OS keychain) for local-tamper resistance, or an asymmetric keypair for
+// shareable / team-verifiable governance artifacts.
+//
+// Helper to compute a deterministic SHA-256 integrity checksum of an object
 function computeHash(obj: any): string {
   if (obj === null || obj === undefined) return '';
   
@@ -1174,7 +1243,7 @@ ipcMain.handle('timeline:save-event', async (_event, { rootPath, presetId, event
       fs.mkdirSync(timelineDir, { recursive: true });
     }
     event.hash = computeHash(event);
-    const filePath = path.join(timelineDir, `event-${event.id}.json`);
+    const filePath = path.join(timelineDir, `event-${assertSafeId(event.id, 'event id')}.json`);
     fs.writeFileSync(filePath, JSON.stringify(event, null, 2), 'utf-8');
     return true;
   } catch (error) {
@@ -1189,7 +1258,7 @@ function getGovernanceDir(rootPath: string | null, presetId: string): string {
   if (PRESET_IDS.includes(presetId)) {
     return path.join(DATA_DIR, 'presets-evals', presetId, 'governance');
   }
-  if (rootPath && fs.existsSync(rootPath)) {
+  if (rootPath && isWorkspaceRootSafe(rootPath) && fs.existsSync(rootPath)) {
     return path.join(rootPath, '.agentdeck', 'governance');
   } else {
     return path.join(DATA_DIR, 'presets-evals', presetId, 'governance');
@@ -1348,7 +1417,7 @@ function getSnapshotsDir(rootPath: string | null, presetId: string): string {
   if (PRESET_IDS.includes(presetId)) {
     return path.join(DATA_DIR, 'presets-evals', presetId, 'snapshots');
   }
-  if (rootPath && fs.existsSync(rootPath)) {
+  if (rootPath && isWorkspaceRootSafe(rootPath) && fs.existsSync(rootPath)) {
     return path.join(rootPath, '.agentdeck', 'snapshots');
   } else {
     return path.join(DATA_DIR, 'presets-evals', presetId, 'snapshots');
@@ -1426,7 +1495,7 @@ ipcMain.handle('snapshots:create', async (_event, { rootPath, presetId, descript
     const hash = computeHash(fullSnapshot);
     fullSnapshot.manifest.hash = hash;
     
-    const filePath = path.join(snapshotsDir, `snapshot-${snapshotId}.json`);
+    const filePath = path.join(snapshotsDir, `snapshot-${assertSafeId(snapshotId, 'snapshotId')}.json`);
     fs.writeFileSync(filePath, JSON.stringify(fullSnapshot, null, 2), 'utf-8');
     
     return {
@@ -1442,7 +1511,7 @@ ipcMain.handle('snapshots:create', async (_event, { rootPath, presetId, descript
 ipcMain.handle('snapshots:load-payload', async (_event, { rootPath, presetId, snapshotId }) => {
   try {
     const snapshotsDir = getSnapshotsDir(rootPath, presetId);
-    const filePath = path.join(snapshotsDir, `snapshot-${snapshotId}.json`);
+    const filePath = path.join(snapshotsDir, `snapshot-${assertSafeId(snapshotId, 'snapshotId')}.json`);
     if (!fs.existsSync(filePath)) {
       throw new Error(`Snapshot with ID ${snapshotId} not found.`);
     }
@@ -1460,7 +1529,7 @@ ipcMain.handle('snapshots:restore', async (_event, { rootPath, presetId, snapsho
   const tempRestoreDir = path.join(snapshotsDir, `temp_restore_${Date.now()}`);
   
   try {
-    const snapshotPath = path.join(snapshotsDir, `snapshot-${snapshotId}.json`);
+    const snapshotPath = path.join(snapshotsDir, `snapshot-${assertSafeId(snapshotId, 'snapshotId')}.json`);
     if (!fs.existsSync(snapshotPath)) {
       return { success: false, error: `Snapshot ${snapshotId} does not exist.` };
     }
@@ -1519,7 +1588,7 @@ ipcMain.handle('snapshots:restore', async (_event, { rootPath, presetId, snapsho
     fs.mkdirSync(tempGoldStandardsDir, { recursive: true });
     if (Array.isArray(payload.goldStandards)) {
       for (const item of payload.goldStandards) {
-        fs.writeFileSync(path.join(tempGoldStandardsDir, `gold-${item.id}.json`), JSON.stringify(item, null, 2), 'utf-8');
+        fs.writeFileSync(path.join(tempGoldStandardsDir, `gold-${assertSafeId(item.id, 'gold standard id')}.json`), JSON.stringify(item, null, 2), 'utf-8');
       }
     }
     
@@ -1718,7 +1787,7 @@ async function runDoctorChecksInternal(rootPath: string | null, presetId: string
       }
     }
   } else {
-    if (rootPath && fs.existsSync(rootPath)) {
+    if (rootPath && isWorkspaceRootSafe(rootPath) && fs.existsSync(rootPath)) {
       const baseDir = path.join(rootPath, '.agentdeck');
       baseExists = fs.existsSync(baseDir);
       if (!baseExists) {
@@ -1804,9 +1873,9 @@ async function runDoctorChecksInternal(rootPath: string | null, presetId: string
           }
           if (verifyHash(rc) === 'tampered') {
             govCheck.status = 'failed';
-            govCheck.message = `Release candidate ${rc.id || 'unknown'} has a tampered signature.`;
+            govCheck.message = `Release candidate ${rc.id || 'unknown'} has a checksum mismatch.`;
             govCheck.repairType = 'remediate';
-            govCheck.repairSuggestion = 'Quarantine tampered candidate record and review system integrity.';
+            govCheck.repairSuggestion = 'Quarantine the candidate record with a checksum mismatch and review system integrity.';
             break;
           }
         }
@@ -1822,12 +1891,12 @@ async function runDoctorChecksInternal(rootPath: string | null, presetId: string
   const snapshotsCheck: any = {
     id: 'snapshots-integrity',
     name: 'Snapshot Manifest Verification',
-    description: 'Scans all snapshot manifests for tampering or missing signatures.',
+    description: 'Scans all snapshot manifests for checksum mismatches or missing checksums.',
     status: 'passed',
     message: 'All snapshots are verified and intact.',
     repairable: true,
     repairType: 'seal',
-    repairSuggestion: 'Seal unsigned snapshot manifests.'
+    repairSuggestion: 'Recompute checksums for snapshot manifests that have none.'
   };
   
   const snapshotsDir = getSnapshotsDir(rootPath, presetId);
@@ -1860,15 +1929,15 @@ async function runDoctorChecksInternal(rootPath: string | null, presetId: string
   
   if (tamperedSnaps.length > 0) {
     snapshotsCheck.status = 'failed';
-    snapshotsCheck.message = `Tampered snapshots detected: ${tamperedSnaps.join(', ')}`;
+    snapshotsCheck.message = `Snapshots with a checksum mismatch: ${tamperedSnaps.join(', ')}`;
     snapshotsCheck.repairType = 'remediate';
-    snapshotsCheck.repairSuggestion = 'Quarantine tampered snapshots and review system logs.';
+    snapshotsCheck.repairSuggestion = 'Quarantine snapshots with a checksum mismatch and review system logs.';
     snapshotsCheck.details = { tamperedSnaps, unsignedSnaps };
   } else if (unsignedSnaps.length > 0) {
     snapshotsCheck.status = 'warning';
-    snapshotsCheck.message = `Unsigned snapshots detected: ${unsignedSnaps.join(', ')}`;
+    snapshotsCheck.message = `Snapshots with no integrity checksum: ${unsignedSnaps.join(', ')}`;
     snapshotsCheck.repairType = 'seal';
-    snapshotsCheck.repairSuggestion = 'Seal unsigned snapshot records with secure signatures.';
+    snapshotsCheck.repairSuggestion = 'Recompute integrity checksums for snapshot records that have none.';
     snapshotsCheck.details = { tamperedSnaps, unsignedSnaps };
   }
   checks.push(snapshotsCheck);
@@ -1876,13 +1945,13 @@ async function runDoctorChecksInternal(rootPath: string | null, presetId: string
   // 4. Tampered provenance records check
   const provenanceCheck: any = {
     id: 'provenance-tamper',
-    name: 'Provenance Cryptographic Seals',
-    description: 'Ensures the provenance mutation ledger has not been tampered with.',
+    name: 'Provenance Integrity Checksums',
+    description: 'Detects checksum mismatches in the provenance mutation ledger.',
     status: 'passed',
     message: 'Provenance ledger is verified and intact.',
     repairable: true,
     repairType: 'seal',
-    repairSuggestion: 'Seal unsigned provenance records.'
+    repairSuggestion: 'Recompute checksums for provenance records that have none.'
   };
   
   const provenancePath = getProvenancePath(rootPath, presetId);
@@ -1912,15 +1981,15 @@ async function runDoctorChecksInternal(rootPath: string | null, presetId: string
   
   if (tamperedProvIds.length > 0) {
     provenanceCheck.status = 'failed';
-    provenanceCheck.message = `Tampered provenance records: ${tamperedProvIds.join(', ')}`;
+    provenanceCheck.message = `Provenance records with a checksum mismatch: ${tamperedProvIds.join(', ')}`;
     provenanceCheck.repairType = 'remediate';
-    provenanceCheck.repairSuggestion = 'Quarantine tampered provenance entries and rebuild clean baseline log.';
+    provenanceCheck.repairSuggestion = 'Quarantine provenance entries with a checksum mismatch and rebuild a clean baseline log.';
     provenanceCheck.details = { tamperedProvIds, unsignedProvIds };
   } else if (unsignedProvIds.length > 0) {
     provenanceCheck.status = 'warning';
-    provenanceCheck.message = `Unsigned provenance records: ${unsignedProvIds.join(', ')}`;
+    provenanceCheck.message = `Provenance records with no integrity checksum: ${unsignedProvIds.join(', ')}`;
     provenanceCheck.repairType = 'seal';
-    provenanceCheck.repairSuggestion = 'Seal unsigned records in provenance ledger.';
+    provenanceCheck.repairSuggestion = 'Recompute checksums for provenance ledger records that have none.';
     provenanceCheck.details = { tamperedProvIds, unsignedProvIds };
   }
   checks.push(provenanceCheck);
@@ -2698,7 +2767,7 @@ function getDecisionsDir(rootPath: string | null, presetId: string): string {
   if (PRESET_IDS.includes(presetId)) {
     return path.join(DATA_DIR, 'presets-evals', presetId, 'decisions');
   }
-  if (rootPath && fs.existsSync(rootPath)) {
+  if (rootPath && isWorkspaceRootSafe(rootPath) && fs.existsSync(rootPath)) {
     return path.join(rootPath, '.agentdeck', 'governance', 'decisions');
   } else {
     return path.join(DATA_DIR, 'presets-evals', presetId, 'decisions');
@@ -2792,8 +2861,8 @@ ${provChain.records?.length > 0 ? provChain.records.map((r: any, idx: number) =>
 
 ---
 
-## 3. DECISION BOARD SIGNATURES
-${dep.signatures?.length > 0 ? dep.signatures.map((sig: any) => `- **Authority**: ${sig.authority}\n  **Signed At**: ${sig.timestamp}\n  **Cryptographic Seal**: ${sig.hash}`).join('\n') : '*This evidence package has not been signed or finalized yet.*'}
+## 3. DECISION BOARD SIGN-OFFS
+${dep.signatures?.length > 0 ? dep.signatures.map((sig: any) => `- **Authority**: ${sig.authority}\n  **Signed Off At**: ${sig.timestamp}\n  **Integrity Checksum (unkeyed SHA-256)**: ${sig.hash}`).join('\n') : '*This evidence package has not been signed off or finalized yet.*'}
 `;
 }
 
@@ -2939,7 +3008,7 @@ ipcMain.handle('dep:generate', async (_event, { rootPath, presetId, candidateId 
     const layer7 = {
       layerId: 'snapshot-evidence',
       title: 'Workspace Snapshot Linkage',
-      description: 'Identifies the cryptographically signed snapshot of the workspace configuration state.',
+      description: 'Identifies the checksummed snapshot of the workspace configuration state.',
       content: {
         snapshotId: associatedSnapshot ? associatedSnapshot.manifest.snapshotId : 'N/A',
         hash: associatedSnapshot ? associatedSnapshot.manifest.hash : 'N/A',
@@ -3046,8 +3115,8 @@ ipcMain.handle('dep:generate', async (_event, { rootPath, presetId, candidateId 
     // Layer 10: Signatures (Initially Empty)
     const layer10 = {
       layerId: 'signatures',
-      title: 'Authorized Decision Board Signatures',
-      description: 'Cryptographic seals appended by authorized stakeholders.',
+      title: 'Authorized Decision Board Sign-offs',
+      description: 'Integrity checksums (unkeyed SHA-256) appended by authorized stakeholders.',
       content: {
         signatures: []
       }
@@ -3133,7 +3202,7 @@ ipcMain.handle('dep:sign-and-save', async (_event, { rootPath, presetId, dep, de
 
     // Save archive folder structure
     const decisionsDir = getDecisionsDir(rootPath, presetId);
-    const depFolder = path.join(decisionsDir, `dep-${dep.id}`);
+    const depFolder = path.join(decisionsDir, `dep-${assertSafeId(dep.id, 'dep id')}`);
     if (!fs.existsSync(depFolder)) {
       fs.mkdirSync(depFolder, { recursive: true });
     }
@@ -3234,7 +3303,7 @@ ipcMain.handle('dep:load-all', async (_event, { rootPath, presetId }) => {
 ipcMain.handle('dep:verify', async (_event, { rootPath, presetId, depId }) => {
   try {
     const decisionsDir = getDecisionsDir(rootPath, presetId);
-    const depFolder = path.join(decisionsDir, `dep-${depId}`);
+    const depFolder = path.join(decisionsDir, `dep-${assertSafeId(depId, 'depId')}`);
     const depPath = path.join(depFolder, 'dep.json');
 
     if (!fs.existsSync(depPath)) {
@@ -3260,7 +3329,7 @@ ipcMain.handle('dep:verify', async (_event, { rootPath, presetId, depId }) => {
     let snapshotExists = false;
     if (snapshotId && snapshotId !== 'N/A') {
       const snapshotsDir = getSnapshotsDir(rootPath, presetId);
-      const snapshotPath = path.join(snapshotsDir, `snapshot-${snapshotId}.json`);
+      const snapshotPath = path.join(snapshotsDir, `snapshot-${assertSafeId(snapshotId, 'snapshotId')}.json`);
       snapshotExists = fs.existsSync(snapshotPath);
     }
 
@@ -3295,7 +3364,7 @@ ipcMain.handle('dep:verify', async (_event, { rootPath, presetId, depId }) => {
 ipcMain.handle('dep:export-json', async (_event, { rootPath, presetId, depId }) => {
   try {
     const decisionsDir = getDecisionsDir(rootPath, presetId);
-    const depPath = path.join(decisionsDir, `dep-${depId}`, 'dep.json');
+    const depPath = path.join(decisionsDir, `dep-${assertSafeId(depId, 'depId')}`, 'dep.json');
     if (!fs.existsSync(depPath)) {
       return { success: false, error: 'DEP json file missing.' };
     }
@@ -3328,7 +3397,7 @@ ipcMain.handle('dep:export-json', async (_event, { rootPath, presetId, depId }) 
 ipcMain.handle('dep:export-markdown', async (_event, { rootPath, presetId, depId }) => {
   try {
     const decisionsDir = getDecisionsDir(rootPath, presetId);
-    const depPath = path.join(decisionsDir, `dep-${depId}`, 'dep.json');
+    const depPath = path.join(decisionsDir, `dep-${assertSafeId(depId, 'depId')}`, 'dep.json');
     if (!fs.existsSync(depPath)) return { success: false, error: 'DEP files missing.' };
     const dep = JSON.parse(fs.readFileSync(depPath, 'utf-8'));
     dep.exportedAt = new Date().toISOString();
@@ -3338,7 +3407,7 @@ ipcMain.handle('dep:export-markdown', async (_event, { rootPath, presetId, depId
     fs.writeFileSync(depPath, JSON.stringify(dep, null, 2), 'utf-8');
     
     const mdContent = generateDEPMarkdown(dep);
-    const mdPath = path.join(decisionsDir, `dep-${depId}`, 'dep.md');
+    const mdPath = path.join(decisionsDir, `dep-${assertSafeId(depId, 'depId')}`, 'dep.md');
     fs.writeFileSync(mdPath, mdContent, 'utf-8');
 
     const win = BrowserWindow.getFocusedWindow();

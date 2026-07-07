@@ -1982,26 +1982,26 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       const rootPath = activeWorkspace.rootPath || null;
       const presetId = activeWorkspace.id;
       
-      await get().addSystemLog('Initiating Governance Records Sealing...', 'info');
-      
-      // 1. Seal policies
+      await get().addSystemLog('Recomputing governance record checksums...', 'info');
+
+      // 1. Recompute policy checksums
       if (get().governancePolicies) {
         await get().saveGovernancePolicies(get().governancePolicies!);
       }
-      
-      // 2. Seal release candidates
+
+      // 2. Recompute release candidate checksums
       if (get().releaseCandidates.length > 0) {
         await window.api.governance.saveCandidates(rootPath, presetId, get().releaseCandidates);
       }
-      
-      // 3. Seal timeline events
+
+      // 3. Recompute timeline event checksums
       if (get().timelineEvents.length > 0) {
         for (const evt of get().timelineEvents) {
           await window.api.timeline.saveEvent(rootPath, presetId, evt);
         }
       }
-      
-      await get().addSystemLog('Sealed all governance, candidate, and timeline event records with secure content hashes.', 'success');
+
+      await get().addSystemLog('Recomputed integrity checksums for all governance, candidate, and timeline event records.', 'success');
       
       // Reload everything to fetch updated verification statuses from backend
       await get().loadEvalsData();
