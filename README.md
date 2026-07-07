@@ -2,11 +2,11 @@
 
 ### Workspace Runtime Control Center for AI-Assisted Development
 
-[**Release Notes (v0.6.0)**](docs/release-notes-v0.6.md)
+**Current version: v1.0.8** · see [`PROJECT_STATE.md`](PROJECT_STATE.md) for the full session-reload / current-state artifact and [`docs/roadmap.md`](docs/roadmap.md) for what's shipped vs. next.
 
 ![AgentDeck Operator Console Dashboard](docs/screenshots/dashboard-active-v0.6.png)
 
-AgentDeck is a desktop workspace orchestrator that combines terminals, local AI services, browser previews, runtime observability, and project control into a single operator console. 
+AgentDeck is a desktop workspace orchestrator that combines terminals, local AI services, browser previews, runtime observability, and project control into a single operator console.
 
 Built with Electron, React, TypeScript, xterm.js, and Node.js, AgentDeck provides a unified environment for managing local projects, AI workflows, VPS infrastructure, and development runtimes.
 
@@ -27,46 +27,18 @@ AgentDeck brings these capabilities together inside a single workspace-oriented 
 
 ---
 
-## Core Features
+## Current Capabilities (v1.0.8)
 
-- **Terminal Workspace**
-  - Native PowerShell integration
-  - WSL integration
-  - SSH session support
-  - xterm.js terminal rendering
-  - Multiple concurrent terminal sessions
-  - node-pty support with self-healing fallback adapters
-
-- **Runtime Control**
-  - Start workspace services
-  - Stop running processes recursively (process tree termination)
-  - Restart managed commands safely
-  - Runtime process registry
-  - Process lifecycle monitoring
-
-- **Project Discovery**
-  - Automatically discover projects using `.agentdeck/workspace.json`
-  - Each project can define preview URLs, health check probes, startup command action lists, and workspace metadata.
-
-- **Browser Preview**
-  - Built-in local preview panel
-  - Localhost support
-  - Development server previews
-  - Isolated workspace visualization
-
-- **Observability**
-  - Workspace health monitoring
-  - API status indicators
-  - Port availability checking
-  - Ollama local GPU service checking
-  - Runtime event tracking
-
-- **Safety Layer**
-  - AgentDeck includes command safety protections:
-    - Dangerous command detection (e.g. `rm -rf`, `del`, `rmdir`, `git clean`)
-    - Dialog interception gate
-    - Backend validation
-    - Safety audit logging
+- **Terminal & Runtime Workspace** — native PowerShell/WSL/SSH terminals via `node-pty` with a self-healing `child_process.spawn` fallback; managed service start/stop/restart with Windows process-tree termination (`taskkill`).
+- **Project Discovery & Manifest Editor** — auto-discovery via `.agentdeck/workspace.json` (schema v2, see [`docs/workspace-manifest-spec.md`](docs/workspace-manifest-spec.md)), an onboarding wizard, and a visual manifest editor with atomic, backed-up writes.
+- **Agent Workspace** — directory-grounded agent sessions with multi-agent model bindings, plus the **Agent Topology Wizard**, which scans a project's structure to suggest agent roles automatically.
+- **Evaluations Center** — benchmarks, regression runs, an approval queue, a failure library, gold standards, judges, and baseline promotion history.
+- **Governance Center & Decision Evidence Packages (DEP)** — release-candidate policies and lifecycle, compliance rationale capture, chain-of-custody timeline, and exportable evidence packages.
+- **Snapshots, Provenance & Doctor Diagnostics** — workspace state snapshots with restore, a provenance mutation ledger, and automated health checks with guided repairs.
+- **Timeline & Replay** — an operator event log with replay of recorded workspace activity.
+- **Browser Preview & Observability** — sandboxed live-preview panel, HTTP port health checks, and Ollama local-model status.
+- **Safety Layer** — destructive-command detection, a confirmation gate, workspace-path traversal validation at the IPC boundary, and integrity checksums on governance/snapshot/provenance records (an unkeyed SHA-256 checksum — it detects accidental corruption and casual edits, not a determined tamperer; see [`docs/audit-remediation-backlog.md`](docs/audit-remediation-backlog.md) for the real-signing plan).
+- **Platform** — Electron 43, Vite 8 / Vitest 4, electron-builder 26; `npm audit` at 0 vulnerabilities; 86 automated tests gating CI.
 
 ---
 
@@ -89,18 +61,20 @@ AgentDeck
 
 ## Technology Stack
 
-- **Desktop Framework**: Electron
+- **Desktop Framework**: Electron 43
 - **UI Framework**: React + TypeScript + Tailwind CSS
-- **Bundler & Tooling**: Vite + PostCSS
+- **Bundler & Tooling**: Vite 8 + PostCSS
+- **Test Runner**: Vitest 4
 - **Console Engine**: xterm.js + Fit Addon
 - **Shell Linkage**: node-pty (Primary) / child_process.spawn (Fallback)
 - **State Store**: Zustand
+- **Packaging**: electron-builder 26 (NSIS)
 
 ---
 
 ## Workspace Manifest
 
-Projects expose metadata and actions through `.agentdeck/workspace.json`.
+Projects expose metadata and actions through `.agentdeck/workspace.json`. See [`docs/workspace-manifest-spec.md`](docs/workspace-manifest-spec.md) for the full schema (v2).
 
 ```json
 {
@@ -136,6 +110,11 @@ npm install
 npm run dev
 ```
 
+### Run Tests
+```bash
+npm test
+```
+
 ### Production Build
 ```bash
 npm run build
@@ -148,55 +127,15 @@ npm run dist
 
 ---
 
-## Current Status & Roadmap
+## Release History & Roadmap
 
-### v0.1: Desktop Foundation (Implemented)
-- [x] Electron bootstrap & Vite hot-reload pipeline
-- [x] React UI layout presets
-- [x] Terminal integration (PowerShell, WSL)
-- [x] Sandboxed browser preview iframe
-- [x] Paste/interactive command safety checks
+Release-by-release detail lives in [`PROJECT_STATE.md`](PROJECT_STATE.md#release-log) (the single source of truth for what has shipped, kept current at every milestone). Forward-looking work — near-term candidates and longer-term deferred ideas — lives in [`docs/roadmap.md`](docs/roadmap.md).
 
-### v0.2: Discovery & Probing (Implemented)
-- [x] Native folder directory picker & auto-discovery
-- [x] Automatic manifest generation (`.agentdeck/workspace.json`)
-- [x] API health polling & Ollama GPU service checking
-- [x] High-density split dashboard layout
-
-### v0.3: Workspace Runtime Control (Implemented)
-- [x] Process registry for managed actions
-- [x] Safe command start / stop / restart sequences
-- [x] Windows process-tree recursive termination (`taskkill`)
-- [x] Safety, Process Events, and scrolling Runtime logs tabs
-- [x] Pre-checked resilient VS Code, Cursor, and Folder launchers
-- [x] Self-healing ConPTY terminal launch fallbacks
-
-### v0.4: Service Orchestration (Implemented)
-- [x] Group commands (`START ALL`, `STOP ALL`, `RESTART ALL`) for services
-- [x] Workspace service-level definitions (Manifest v2)
-- [x] Targeted terminations of managed services
-- [x] Runtime dashboard monitoring service indicators and Ollama state
-
-### v0.5: Workspace Templates & Manifest Editor (Implemented)
-- [x] Onboarding wizard with Vite, Python, Static, and Custom template presets
-- [x] Full visual `.agentdeck/workspace.json` editor with schema validation
-- [x] Safe manifest writes with atomic swapping and timestamped backups
-- [x] Protection of built-in presets (read-only locking)
-
-### v0.6: Packaging & Release Polish (Implemented)
-- [x] Custom high-contrast squircle app icon
-- [x] Automated electron-builder NSIS installer distribution pipeline
-- [x] Unsigned installer documentation and architectural specifications
-
-### Future: Agent Workspace Integration (Planned Roadmap)
-- [ ] Local LLM execution context logs
-- [ ] Ollama models management HUD
-- [ ] Agent code generation execution monitoring
-
-### v1.0: Enterprise HUD (Planned Roadmap)
-- [ ] Plugin extension registry
-- [ ] Shared team workspace configurations
-- [ ] Remote runtime dashboard
+At a glance, AgentDeck has shipped through:
+- **v0.1–v0.6**: desktop foundation, discovery/probing, workspace runtime control, service orchestration, templates & manifest editor, packaging polish.
+- **v1.0.0–v1.0.5**: Governance Center, Evaluations Center, Timeline & Replay, and Decision Evidence Packages (DEP).
+- **v1.0.6–v1.0.7**: Agent Workspace Foundation and the Agent Topology Wizard.
+- **v1.0.8 (current)**: audit remediation (test harness + CI gate, hardened command execution, honest integrity-checksum wording, IPC path validation) and the Electron 43 / Vite 8 / Vitest 4 / electron-builder 26 platform upgrade.
 
 ---
 

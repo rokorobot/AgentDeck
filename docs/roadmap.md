@@ -1,94 +1,52 @@
 # AgentDeck Development Roadmap
 
-This document maps out the release timeline, completed milestones, and immediate architectural focus for AgentDeck.
+This document tracks what has shipped, the current baseline, near-term candidates, and longer-term deferred ideas. Release-by-release detail (what exactly landed in each version) lives in [`PROJECT_STATE.md`](../PROJECT_STATE.md#release-log) — that table is the source of truth for shipped history; this document does not duplicate it.
 
 ---
 
-## Completed Milestones
+## Shipped
 
-### v0.1: Windows App Foundation
-- **Focus**: Native desktop environment boots and renders terminal inputs.
-- [x] Electron application bootstrap with TSX/tsc pre-compiling.
-- [x] React workspace shell layout using custom dark theme.
-- [x] Responsive `xterm.js` console panel rendering standard Windows shells.
-- [x] Sandboxed browser preview iframe.
-- [x] Paste and input safety regex filters.
-
-### v0.2: Probing & Observability
-- **Focus**: Context auto-discovery and background status indicators.
-- [x] Auto-discovery of folders via directory picking.
-- [x] Automated workspace manifest generation (`.agentdeck/workspace.json`).
-- [x] Non-blocking health checks (HTTP port polling & Ollama API validation).
-- [x] Sidebar metrics badges for quick port/run statuses.
-
-### v0.3: Workspace Runtime Control (Current)
-- **Focus**: Process control and diagnostic feedback.
-- [x] Process registry separating user interactive shells from managed service scripts.
-- [x] Windows process-tree recursive force-killing (`taskkill /F /T /PID`).
-- [x] Audit trails for stop and restart routines.
-- [x] Self-healing terminal fallbacks recovering ConPTY crashes on the fly.
-- [x] Three-tab logs: Safety Logs, Runtime Logs (ANSI stripped), and Process Events.
-- [x] Safe IDE launchers (VS Code, Cursor, Explorer) with missing binary logs.
+- **v0.1 — Windows App Foundation**: Electron bootstrap, `xterm.js` terminal rendering, sandboxed browser preview, paste/input safety filters.
+- **v0.2 — Probing & Observability**: folder auto-discovery, automated `.agentdeck/workspace.json` manifest generation, non-blocking HTTP/Ollama health checks, sidebar status badges.
+- **v0.3 — Workspace Runtime Control**: process registry, Windows process-tree termination (`taskkill /F /T /PID`), self-healing terminal fallbacks, safety/runtime/process-event log tabs.
+- **v0.4 — Service Orchestration**: `START ALL` / `STOP ALL` / `RESTART ALL` service groups, workspace service-level definitions (manifest schema v2 — see [`docs/workspace-manifest-spec.md`](workspace-manifest-spec.md) for the shipped spec, which superseded the earlier schema draft this document used to carry).
+- **v0.5 — Workspace Templates & Manifest Editor**: onboarding wizard (Vite / Python / Static / Custom templates), visual manifest editor with schema validation, atomic writes with timestamped backups, read-only preset locking.
+- **v0.6 — Packaging & Release Polish**: custom app icon, electron-builder NSIS installer pipeline, unsigned-installer documentation (see [`docs/release-notes-v0.6.md`](release-notes-v0.6.md)).
+- **v1.0.0–v1.0.5 — Governance & Evidence**: Governance Center (policies, release-candidate lifecycle), Evaluations Center (benchmarks, regression runs, gold standards, judges, promotions), Timeline & Replay, and Decision Evidence Packages (DEP) with chain-of-custody tracking.
+- **v1.0.6 — Agent Workspace Foundation**: directory-grounded workspaces, Workspace Agents dashboard, multi-agent model binding, agent metadata persisted in `.agentdeck/workspace.json`.
+- **v1.0.7 — Agent Topology Wizard**: scans a project's structure and suggests agent roles automatically.
+- **v1.0.8 — Audit Remediation & Platform Upgrade**: Vitest test harness + CI gate, hardened `ide:open` command execution, honest integrity-checksum wording (replacing overstated "cryptographic seal/signature" claims), workspace-path and filename-ID validation at the IPC boundary, hardened process termination, and the Electron 43 / Vite 8 / Vitest 4 / electron-builder 26 platform upgrade (`npm audit` 0).
 
 ---
 
-## Up Next: v0.4 — Workspace Templates & Service Groups
+## Current Baseline: v1.0.8
 
-Instead of jumping straight into AI integrations or configurations, **v0.4 focuses on daily developer ergonomics by introducing workspace templates and command service groups**.
-
-### The Problem
-Complex workspaces often require multiple companion services to run concurrently (e.g. starting a frontend requires launching a backend API, a worker thread, and a docker database container). Triggering these individually is tedious.
-
-### The Solution: Service Groups
-Introduce the concept of a "Service Group" in the manifest, allowing users to group multiple commands under a single named tab/group.
-
-#### Manifest Additions (Schema Proposal)
-```json
-{
-  "schemaVersion": "agentdeck.workspace.v1.1",
-  "templates": {
-    "developer-preset": {
-      "label": "Full-stack Setup",
-      "services": ["start-db", "start-backend", "start-frontend"]
-    }
-  },
-  "commands": [
-    {
-      "id": "start-db",
-      "label": "Database Container",
-      "command": "docker-compose up db"
-    },
-    {
-      "id": "start-backend",
-      "label": "FastAPI Server",
-      "command": "uvicorn main:app --reload"
-    },
-    {
-      "id": "start-frontend",
-      "label": "Vite Client",
-      "command": "npm run dev"
-    }
-  ]
-}
-```
-
-#### v0.4 Key Objectives:
-- **One-Click Workspace Boot**: A central `Start Workspace` dashboard button that automatically triggers all services mapped in the active template.
-- **Service Dependency Graphing**: Boot services in a defined sequence, waiting for a health check to pass before spawning the next dependent service.
-- **Unified Service View**: Group concurrent stdout logs into the Runtime Logs feed, and show process health states in a side-by-side drawer layout.
+The current shipped state. See [`PROJECT_STATE.md`](../PROJECT_STATE.md) for the full session-reload artifact, and [`docs/audit-remediation-backlog.md`](audit-remediation-backlog.md) for the detailed audit trail behind the v1.0.8 hardening work.
 
 ---
 
-## Future Roadmaps
+## Next Candidates
 
-### v0.5: Local AI Workspace Automation
-- **Focus**: Injecting AI capabilities directly into the operator console.
-- [ ] Direct Ollama model download and selection menus in the sidebar.
-- [ ] Monitored agent execution streams (spawning shell sub-agents to debug terminal errors).
-- [ ] Context-aware shell commands helper suggestion box.
+Concrete, already-scoped follow-ups from the audit remediation backlog ([`docs/audit-remediation-backlog.md`](audit-remediation-backlog.md)), not yet scheduled:
 
-### v1.0: Full Workspace Orchestration
-- **Focus**: Production environment orchestration and scaling.
-- [ ] Team manifest sharing.
-- [ ] Remote VPS runtime dashboard (controlling remote services from a local HUD).
-- [ ] Plugin extension ecosystem.
+- **Real integrity signing** — replace the unkeyed SHA-256 checksum with HMAC (per-install secret) or asymmetric signing, once the threat model is decided (accidental-corruption detection vs. tamper resistance vs. shared/team-manifest verification).
+- **God-file extraction** — split `electron/main.ts`'s ~50 IPC handlers into per-domain modules behind a shared `readJsonSafe`/`writeJsonAtomic` helper, and split `workspaceStore.ts` into domain slices.
+- **`EvaluationsView` decomposition** — break the largest component (1,300+ lines, 7 sub-features) into per-tab components with a shared `<Tabs>`/`<Modal>`.
+- **Error-surfacing polish** — route caught errors to the UI (toast/log) instead of `console.error`-only; retire `alert()`/`window.prompt()`.
+- **Safety-gate de-noise** — unify the two `commandSafety` implementations and reduce false positives (e.g. `npm rm <pkg>` currently gets flagged).
+- **`scratch/` cleanup** — fold the ad-hoc simulation scripts into the real test suite or retire them.
+
+---
+
+## Deferred / Future
+
+Longer-term ideas, not yet scoped into concrete tasks:
+
+- Local LLM execution context logs and monitored agent execution streams (spawning shell sub-agents to debug terminal errors).
+- Ollama model management HUD (direct model download/selection from the sidebar).
+- Context-aware shell command suggestions.
+- Plugin extension registry.
+- Shared/team workspace manifest configurations.
+- Remote VPS runtime dashboard (controlling remote services from the local HUD).
+
+Note: if shared/team manifest distribution becomes real, the trust-boundary hardening in v1.0.8 (path validation, command execution) becomes materially more important — a malicious shared manifest would turn a local footgun into a remote one. Re-prioritize the "Next Candidates" security items above that milestone if it's picked up.
