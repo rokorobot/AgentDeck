@@ -23,7 +23,7 @@
     "zustand": "^4.5.2"
   },
   "optionalDependencies": {
-    "node-pty": "^1.0.0"
+    "node-pty": "^1.1.0"
   },
   "devDependencies": {
     "@types/node": "^20.12.12",
@@ -33,7 +33,7 @@
     "@vitest/coverage-v8": "^4.1.10",
     "autoprefixer": "^10.4.19",
     "concurrently": "^8.2.2",
-    "electron": "^30.0.6",
+    "electron": "^43.1.0",
     "electron-builder": "^24.13.3",
     "lucide-react": "^0.379.0",
     "postcss": "^8.4.38",
