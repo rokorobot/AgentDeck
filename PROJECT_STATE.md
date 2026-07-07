@@ -4,7 +4,7 @@
 > into a fresh AI session to continue work with full project context.
 > Regenerate at every milestone release.
 
-**Snapshot:** 2026-06-23 · current version **v1.0.6** (Agent Workspace Foundation) · branch `main`
+**Snapshot:** 2026-07-08 · current version **v1.0.8** (Audit Remediation & Platform Upgrade) · branch `main`
 **Repo:** https://github.com/rokorobot/AgentDeck.git
 
 ## What AgentDeck is
@@ -35,6 +35,8 @@ Observability & Health Checks             Port telemetry, Ollama model check, lo
 | **v1.0.5** | Decision Evidence Package (DEP), compliance rationales, deterministic risk engine scoring, local archive export. |
 | **v1.0.5a** | DEP Chain of Custody timeline, audit-ready timestamps/actor logging, live export registration. |
 | **v1.0.6** | **Agent Workspace Foundation**: transitions from presets to directory-grounded workspaces. Adds Workspace Agents dashboard, multi-agent model binding (GPT/Claude), persistence in `.agentdeck/workspace.json`, and terminal grounding. |
+| **v1.0.7** | **Agent Topology Wizard**: automated workspace scanning to suggest agent roles from detected project structure. |
+| **v1.0.8** | **Audit Remediation & Platform Upgrade**: test harness + CI gate, `ide:open` shell-injection fix, honest integrity-checksum wording, workspace path/filename-ID validation at the IPC boundary, `taskkill` command hardening, and the Electron 43 / Vite 8 / Vitest 4 / electron-builder 26 platform upgrade (`npm audit` 0). |
 
 ## How to run
 
