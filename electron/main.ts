@@ -10,6 +10,7 @@ import { setLogWindow, addSystemLogInternal } from './logger';
 import { validateManifest } from '../src/lib/manifestValidation';
 import { scanAgentTopologyInternal } from '../src/lib/topologyScanner';
 import { buildIdeOpenCommand, resolveExecutableOnPath, findEditorExecutable, IdeLaunchSpec } from '../src/lib/ideLauncher';
+import { isWorkspaceRootSafe, assertSafeId } from '../src/lib/pathSafety';
 
 let mainWindow: BrowserWindow | null = null;
 const terminalManager = new TerminalManager();
@@ -233,6 +234,7 @@ ipcMain.handle('dialog:open-directory', async () => {
 // --- Dynamic Workspace Loader (.agentdeck/workspace.json) ---
 ipcMain.handle('workspace:load-path', async (_event, folderPath: string) => {
   try {
+    if (!isWorkspaceRootSafe(folderPath)) return null;
     const configPath = path.join(folderPath, '.agentdeck', 'workspace.json');
     if (!fs.existsSync(configPath)) {
       return null;
@@ -251,6 +253,7 @@ ipcMain.handle('workspace:load-path', async (_event, folderPath: string) => {
 // --- Dynamic Workspace Manifest Editor & Wizard Operations ---
 ipcMain.handle('workspace:check-config', async (_event, folderPath: string) => {
   try {
+    if (!isWorkspaceRootSafe(folderPath)) return { exists: false };
     const configPath = path.join(folderPath, '.agentdeck', 'workspace.json');
     return { exists: fs.existsSync(configPath) };
   } catch (e) {
@@ -261,6 +264,9 @@ ipcMain.handle('workspace:check-config', async (_event, folderPath: string) => {
 
 ipcMain.handle('workspace:initialize', async (_event, { folderPath, name, previewUrl, templateId }) => {
   try {
+    if (!isWorkspaceRootSafe(folderPath)) {
+      return { success: false, error: 'Invalid workspace folder. Select an existing absolute folder (no relative, empty, or ".." paths).' };
+    }
     const agentdeckDir = path.join(folderPath, '.agentdeck');
     const configPath = path.join(agentdeckDir, 'workspace.json');
     
@@ -392,6 +398,9 @@ ipcMain.handle('workspace:save', async (_event, { id, rootPath, config }) => {
       configPath = path.join(WORKSPACES_DIR, `${id}.json`);
     } else if (rootPath) {
       // Dynamic discovered workspace
+      if (!isWorkspaceRootSafe(rootPath)) {
+        return { success: false, error: 'Invalid workspace folder. Select an existing absolute folder (no relative, empty, or ".." paths).' };
+      }
       configPath = path.join(rootPath, '.agentdeck', 'workspace.json');
     } else {
       return { success: false, error: 'Target workspace root path is missing.' };
@@ -558,7 +567,7 @@ function getEvalsDir(rootPath: string | null, presetId: string): string {
   if (PRESET_IDS.includes(presetId)) {
     return path.join(DATA_DIR, 'presets-evals', presetId);
   }
-  if (rootPath && fs.existsSync(rootPath)) {
+  if (rootPath && isWorkspaceRootSafe(rootPath) && fs.existsSync(rootPath)) {
     return path.join(rootPath, '.agentdeck', 'evals');
   } else {
     return path.join(DATA_DIR, 'presets-evals', presetId);
@@ -873,7 +882,7 @@ ipcMain.handle('evals:save-failure', async (_event, { rootPath, presetId, failur
     if (!fs.existsSync(failuresDir)) {
       fs.mkdirSync(failuresDir, { recursive: true });
     }
-    const filePath = path.join(failuresDir, `failure-${failure.id}.json`);
+    const filePath = path.join(failuresDir, `failure-${assertSafeId(failure.id, 'failure id')}.json`);
     fs.writeFileSync(filePath, JSON.stringify(failure, null, 2), 'utf-8');
     return true;
   } catch (error) {
@@ -885,7 +894,7 @@ ipcMain.handle('evals:save-failure', async (_event, { rootPath, presetId, failur
 ipcMain.handle('evals:delete-failure', async (_event, { rootPath, presetId, failureId }) => {
   try {
     const evalsDir = getEvalsDir(rootPath, presetId);
-    const filePath = path.join(evalsDir, 'failures', `failure-${failureId}.json`);
+    const filePath = path.join(evalsDir, 'failures', `failure-${assertSafeId(failureId, 'failureId')}.json`);
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
       return true;
@@ -919,7 +928,7 @@ ipcMain.handle('evals:save-gold-standard', async (_event, { rootPath, presetId, 
     if (!fs.existsSync(goldStandardsDir)) {
       fs.mkdirSync(goldStandardsDir, { recursive: true });
     }
-    const filePath = path.join(goldStandardsDir, `gold-${item.id}.json`);
+    const filePath = path.join(goldStandardsDir, `gold-${assertSafeId(item.id, 'gold standard id')}.json`);
     fs.writeFileSync(filePath, JSON.stringify(item, null, 2), 'utf-8');
     return true;
   } catch (error) {
@@ -931,7 +940,7 @@ ipcMain.handle('evals:save-gold-standard', async (_event, { rootPath, presetId, 
 ipcMain.handle('evals:delete-gold-standard', async (_event, { rootPath, presetId, id }) => {
   try {
     const evalsDir = getEvalsDir(rootPath, presetId);
-    const filePath = path.join(evalsDir, 'gold-standards', `gold-${id}.json`);
+    const filePath = path.join(evalsDir, 'gold-standards', `gold-${assertSafeId(id, 'gold standard id')}.json`);
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
       return true;
@@ -979,7 +988,7 @@ function getTimelineDir(rootPath: string | null, presetId: string): string {
   if (PRESET_IDS.includes(presetId)) {
     return path.join(DATA_DIR, 'presets-evals', presetId, 'timeline');
   }
-  if (rootPath && fs.existsSync(rootPath)) {
+  if (rootPath && isWorkspaceRootSafe(rootPath) && fs.existsSync(rootPath)) {
     return path.join(rootPath, '.agentdeck', 'timeline');
   } else {
     return path.join(DATA_DIR, 'presets-evals', presetId, 'timeline');
@@ -1234,7 +1243,7 @@ ipcMain.handle('timeline:save-event', async (_event, { rootPath, presetId, event
       fs.mkdirSync(timelineDir, { recursive: true });
     }
     event.hash = computeHash(event);
-    const filePath = path.join(timelineDir, `event-${event.id}.json`);
+    const filePath = path.join(timelineDir, `event-${assertSafeId(event.id, 'event id')}.json`);
     fs.writeFileSync(filePath, JSON.stringify(event, null, 2), 'utf-8');
     return true;
   } catch (error) {
@@ -1249,7 +1258,7 @@ function getGovernanceDir(rootPath: string | null, presetId: string): string {
   if (PRESET_IDS.includes(presetId)) {
     return path.join(DATA_DIR, 'presets-evals', presetId, 'governance');
   }
-  if (rootPath && fs.existsSync(rootPath)) {
+  if (rootPath && isWorkspaceRootSafe(rootPath) && fs.existsSync(rootPath)) {
     return path.join(rootPath, '.agentdeck', 'governance');
   } else {
     return path.join(DATA_DIR, 'presets-evals', presetId, 'governance');
@@ -1408,7 +1417,7 @@ function getSnapshotsDir(rootPath: string | null, presetId: string): string {
   if (PRESET_IDS.includes(presetId)) {
     return path.join(DATA_DIR, 'presets-evals', presetId, 'snapshots');
   }
-  if (rootPath && fs.existsSync(rootPath)) {
+  if (rootPath && isWorkspaceRootSafe(rootPath) && fs.existsSync(rootPath)) {
     return path.join(rootPath, '.agentdeck', 'snapshots');
   } else {
     return path.join(DATA_DIR, 'presets-evals', presetId, 'snapshots');
@@ -1486,7 +1495,7 @@ ipcMain.handle('snapshots:create', async (_event, { rootPath, presetId, descript
     const hash = computeHash(fullSnapshot);
     fullSnapshot.manifest.hash = hash;
     
-    const filePath = path.join(snapshotsDir, `snapshot-${snapshotId}.json`);
+    const filePath = path.join(snapshotsDir, `snapshot-${assertSafeId(snapshotId, 'snapshotId')}.json`);
     fs.writeFileSync(filePath, JSON.stringify(fullSnapshot, null, 2), 'utf-8');
     
     return {
@@ -1502,7 +1511,7 @@ ipcMain.handle('snapshots:create', async (_event, { rootPath, presetId, descript
 ipcMain.handle('snapshots:load-payload', async (_event, { rootPath, presetId, snapshotId }) => {
   try {
     const snapshotsDir = getSnapshotsDir(rootPath, presetId);
-    const filePath = path.join(snapshotsDir, `snapshot-${snapshotId}.json`);
+    const filePath = path.join(snapshotsDir, `snapshot-${assertSafeId(snapshotId, 'snapshotId')}.json`);
     if (!fs.existsSync(filePath)) {
       throw new Error(`Snapshot with ID ${snapshotId} not found.`);
     }
@@ -1520,7 +1529,7 @@ ipcMain.handle('snapshots:restore', async (_event, { rootPath, presetId, snapsho
   const tempRestoreDir = path.join(snapshotsDir, `temp_restore_${Date.now()}`);
   
   try {
-    const snapshotPath = path.join(snapshotsDir, `snapshot-${snapshotId}.json`);
+    const snapshotPath = path.join(snapshotsDir, `snapshot-${assertSafeId(snapshotId, 'snapshotId')}.json`);
     if (!fs.existsSync(snapshotPath)) {
       return { success: false, error: `Snapshot ${snapshotId} does not exist.` };
     }
@@ -1579,7 +1588,7 @@ ipcMain.handle('snapshots:restore', async (_event, { rootPath, presetId, snapsho
     fs.mkdirSync(tempGoldStandardsDir, { recursive: true });
     if (Array.isArray(payload.goldStandards)) {
       for (const item of payload.goldStandards) {
-        fs.writeFileSync(path.join(tempGoldStandardsDir, `gold-${item.id}.json`), JSON.stringify(item, null, 2), 'utf-8');
+        fs.writeFileSync(path.join(tempGoldStandardsDir, `gold-${assertSafeId(item.id, 'gold standard id')}.json`), JSON.stringify(item, null, 2), 'utf-8');
       }
     }
     
@@ -1778,7 +1787,7 @@ async function runDoctorChecksInternal(rootPath: string | null, presetId: string
       }
     }
   } else {
-    if (rootPath && fs.existsSync(rootPath)) {
+    if (rootPath && isWorkspaceRootSafe(rootPath) && fs.existsSync(rootPath)) {
       const baseDir = path.join(rootPath, '.agentdeck');
       baseExists = fs.existsSync(baseDir);
       if (!baseExists) {
@@ -2758,7 +2767,7 @@ function getDecisionsDir(rootPath: string | null, presetId: string): string {
   if (PRESET_IDS.includes(presetId)) {
     return path.join(DATA_DIR, 'presets-evals', presetId, 'decisions');
   }
-  if (rootPath && fs.existsSync(rootPath)) {
+  if (rootPath && isWorkspaceRootSafe(rootPath) && fs.existsSync(rootPath)) {
     return path.join(rootPath, '.agentdeck', 'governance', 'decisions');
   } else {
     return path.join(DATA_DIR, 'presets-evals', presetId, 'decisions');
@@ -3193,7 +3202,7 @@ ipcMain.handle('dep:sign-and-save', async (_event, { rootPath, presetId, dep, de
 
     // Save archive folder structure
     const decisionsDir = getDecisionsDir(rootPath, presetId);
-    const depFolder = path.join(decisionsDir, `dep-${dep.id}`);
+    const depFolder = path.join(decisionsDir, `dep-${assertSafeId(dep.id, 'dep id')}`);
     if (!fs.existsSync(depFolder)) {
       fs.mkdirSync(depFolder, { recursive: true });
     }
@@ -3294,7 +3303,7 @@ ipcMain.handle('dep:load-all', async (_event, { rootPath, presetId }) => {
 ipcMain.handle('dep:verify', async (_event, { rootPath, presetId, depId }) => {
   try {
     const decisionsDir = getDecisionsDir(rootPath, presetId);
-    const depFolder = path.join(decisionsDir, `dep-${depId}`);
+    const depFolder = path.join(decisionsDir, `dep-${assertSafeId(depId, 'depId')}`);
     const depPath = path.join(depFolder, 'dep.json');
 
     if (!fs.existsSync(depPath)) {
@@ -3320,7 +3329,7 @@ ipcMain.handle('dep:verify', async (_event, { rootPath, presetId, depId }) => {
     let snapshotExists = false;
     if (snapshotId && snapshotId !== 'N/A') {
       const snapshotsDir = getSnapshotsDir(rootPath, presetId);
-      const snapshotPath = path.join(snapshotsDir, `snapshot-${snapshotId}.json`);
+      const snapshotPath = path.join(snapshotsDir, `snapshot-${assertSafeId(snapshotId, 'snapshotId')}.json`);
       snapshotExists = fs.existsSync(snapshotPath);
     }
 
@@ -3355,7 +3364,7 @@ ipcMain.handle('dep:verify', async (_event, { rootPath, presetId, depId }) => {
 ipcMain.handle('dep:export-json', async (_event, { rootPath, presetId, depId }) => {
   try {
     const decisionsDir = getDecisionsDir(rootPath, presetId);
-    const depPath = path.join(decisionsDir, `dep-${depId}`, 'dep.json');
+    const depPath = path.join(decisionsDir, `dep-${assertSafeId(depId, 'depId')}`, 'dep.json');
     if (!fs.existsSync(depPath)) {
       return { success: false, error: 'DEP json file missing.' };
     }
@@ -3388,7 +3397,7 @@ ipcMain.handle('dep:export-json', async (_event, { rootPath, presetId, depId }) 
 ipcMain.handle('dep:export-markdown', async (_event, { rootPath, presetId, depId }) => {
   try {
     const decisionsDir = getDecisionsDir(rootPath, presetId);
-    const depPath = path.join(decisionsDir, `dep-${depId}`, 'dep.json');
+    const depPath = path.join(decisionsDir, `dep-${assertSafeId(depId, 'depId')}`, 'dep.json');
     if (!fs.existsSync(depPath)) return { success: false, error: 'DEP files missing.' };
     const dep = JSON.parse(fs.readFileSync(depPath, 'utf-8'));
     dep.exportedAt = new Date().toISOString();
@@ -3398,7 +3407,7 @@ ipcMain.handle('dep:export-markdown', async (_event, { rootPath, presetId, depId
     fs.writeFileSync(depPath, JSON.stringify(dep, null, 2), 'utf-8');
     
     const mdContent = generateDEPMarkdown(dep);
-    const mdPath = path.join(decisionsDir, `dep-${depId}`, 'dep.md');
+    const mdPath = path.join(decisionsDir, `dep-${assertSafeId(depId, 'depId')}`, 'dep.md');
     fs.writeFileSync(mdPath, mdContent, 'utf-8');
 
     const win = BrowserWindow.getFocusedWindow();
