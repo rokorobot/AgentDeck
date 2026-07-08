@@ -158,7 +158,7 @@ export const AgentTopologyWizard: React.FC<AgentTopologyWizardProps> = ({ isOpen
 
       if (!isDuplicate) {
         const newAgent: Agent = {
-          id: `agent_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          id: `agent_${crypto.randomUUID()}`,
           workspaceId: activeWorkspace.id,
           name: agentToCreate.name,
           role: agentToCreate.role,

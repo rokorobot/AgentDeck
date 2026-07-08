@@ -112,7 +112,7 @@ export const EvaluationsView: React.FC<EvaluationsViewProps> = ({ initialSubTab 
     const targetId = selectedBenchmarkId || benchmarks[0]?.id || 'sound-machina-prompt-quality';
 
     const newFailure: FailureCase = {
-      id: `fail-${Date.now()}`,
+      id: `fail-${crypto.randomUUID()}`,
       benchmarkId: targetId,
       prompt: newFailurePrompt,
       expected: newFailureExpected,
@@ -170,7 +170,7 @@ export const EvaluationsView: React.FC<EvaluationsViewProps> = ({ initialSubTab 
     if (!newGoldTitle.trim() || !newGoldContent.trim()) return;
 
     const newItem: GoldStandard = {
-      id: `gold-${Date.now()}`,
+      id: `gold-${crypto.randomUUID()}`,
       title: newGoldTitle,
       content: newGoldContent,
       tags: newGoldTags.split(',').map(t => t.trim()).filter(t => t.length > 0),

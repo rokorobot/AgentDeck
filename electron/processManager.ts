@@ -1,4 +1,5 @@
 import { execFile } from 'child_process';
+import crypto from 'crypto';
 import { TerminalManager } from './terminalManager';
 import { BrowserWindow } from 'electron';
 import { addSystemLogInternal } from './logger';
@@ -34,7 +35,9 @@ class ProcessManager {
     terminalManager: TerminalManager,
     mainWindow: BrowserWindow
   ): Promise<ManagedProcess> {
-    const runId = `run-${workspaceId}-${cmd.id}-${Date.now()}`;
+    // 'run-' prefix is load-bearing: workspaceStore.ts dispatches terminal
+    // session type (managed process vs. raw shell) via startsWith('run-').
+    const runId = `run-${workspaceId}-${cmd.id}-${crypto.randomUUID()}`;
     
     // Spawn terminal
     const res = terminalManager.createTerminal(runId, cmd.shell, [], cwd, 80, 24);

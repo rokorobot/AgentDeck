@@ -1470,7 +1470,7 @@ ipcMain.handle('snapshots:create', async (_event, { rootPath, presetId, descript
       fs.mkdirSync(snapshotsDir, { recursive: true });
     }
     
-    const snapshotId = `snap-${Date.now()}`;
+    const snapshotId = `snap-${crypto.randomUUID()}`;
     const createdAt = new Date().toISOString();
     
     const manifest: any = {
@@ -2335,7 +2335,7 @@ ipcMain.handle('doctor:repair', async (_event, { rootPath, presetId, checkId }) 
                 // Add remediation record
                 const remediation = {
                   schemaVersion: "agentdeck.provenance.v1",
-                  id: `prov-remed-${Date.now()}`,
+                  id: `prov-remed-${crypto.randomUUID()}`,
                   timestamp: Date.now(),
                   actor: "system",
                   mutationType: "release_candidate_updated",
@@ -2383,7 +2383,7 @@ ipcMain.handle('doctor:repair', async (_event, { rootPath, presetId, checkId }) 
                   // Add remediation record
                   const remediation = {
                     schemaVersion: "agentdeck.provenance.v1",
-                    id: `prov-remed-${Date.now()}`,
+                    id: `prov-remed-${crypto.randomUUID()}`,
                     timestamp: Date.now(),
                     actor: "system",
                     mutationType: "snapshot_restored",
@@ -2421,7 +2421,7 @@ ipcMain.handle('doctor:repair', async (_event, { rootPath, presetId, checkId }) 
               const freshLedger = { records: [] as any[] };
               const remediation = {
                 schemaVersion: "agentdeck.provenance.v1",
-                id: `prov-remed-${Date.now()}`,
+                id: `prov-remed-${crypto.randomUUID()}`,
                 timestamp: Date.now(),
                 actor: "system",
                 mutationType: "policy_updated",
@@ -3250,7 +3250,7 @@ ipcMain.handle('dep:sign-and-save', async (_event, { rootPath, presetId, dep, de
     // Log mutation provenance record
     const provRecord = {
       schemaVersion: 'agentdeck.provenance.v1',
-      id: `prov-dep-${Date.now()}`,
+      id: `prov-dep-${crypto.randomUUID()}`,
       timestamp: Date.now(),
       actor: 'operator',
       mutationType: 'release_candidate_updated',

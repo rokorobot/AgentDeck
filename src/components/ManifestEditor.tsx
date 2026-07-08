@@ -46,7 +46,7 @@ export const ManifestEditor: React.FC = () => {
   // --- Services handlers ---
   const handleAddService = () => {
     const newService: WorkspaceService = {
-      id: `service-${Date.now()}`,
+      id: `service-${crypto.randomUUID()}`,
       label: 'New Service',
       shell: 'powershell.exe',
       command: 'echo "Running service"',
@@ -68,7 +68,7 @@ export const ManifestEditor: React.FC = () => {
   // --- Quick Actions handlers ---
   const handleAddQuickAction = () => {
     const newAction: WorkspaceQuickAction = {
-      id: `action-${Date.now()}`,
+      id: `action-${crypto.randomUUID()}`,
       label: 'New Action',
       type: 'openFolder'
     };
