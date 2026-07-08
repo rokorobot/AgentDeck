@@ -10,6 +10,8 @@ import { setLogWindow, addSystemLogInternal } from './logger';
 import { validateManifest } from '../src/lib/manifestValidation';
 import { scanAgentTopologyInternal } from '../src/lib/topologyScanner';
 import { isWorkspaceRootSafe, assertSafeId } from '../src/lib/pathSafety';
+import { createWorkspacePaths } from './workspacePaths';
+import { computeHash, verifyHash } from '../src/lib/integrityChecksum';
 import { registerProcessHandlers } from './ipc/processHandlers';
 import { registerTerminalHandlers } from './ipc/terminalHandlers';
 import { registerIdeHandlers } from './ipc/ideHandlers';
@@ -28,6 +30,18 @@ if (!fs.existsSync(WORKSPACES_DIR)) {
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
+
+// Workspace path resolvers (extracted to workspacePaths.ts, W5 PR 5). Bound to
+// DATA_DIR here so every existing call site (getEvalsDir(rootPath, presetId),
+// etc.) stays unchanged.
+const {
+  getEvalsDir,
+  getTimelineDir,
+  getGovernanceDir,
+  getSnapshotsDir,
+  getDecisionsDir,
+  getProvenancePath,
+} = createWorkspacePaths(DATA_DIR);
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -339,19 +353,6 @@ registerIdeHandlers({
   spawn,
   addSystemLogInternal,
 });
-
-// Helper to get evaluation directory
-function getEvalsDir(rootPath: string | null, presetId: string): string {
-  const PRESET_IDS = ['sound-machina', 'tm4', 'robotstore'];
-  if (PRESET_IDS.includes(presetId)) {
-    return path.join(DATA_DIR, 'presets-evals', presetId);
-  }
-  if (rootPath && isWorkspaceRootSafe(rootPath) && fs.existsSync(rootPath)) {
-    return path.join(rootPath, '.agentdeck', 'evals');
-  } else {
-    return path.join(DATA_DIR, 'presets-evals', presetId);
-  }
-}
 
 // IPC Handlers for Evals Persistence
 ipcMain.handle('evals:load-data', async (_event, { rootPath, presetId }) => {
@@ -762,61 +763,6 @@ ipcMain.handle('evals:save-promotions', async (_event, { rootPath, presetId, lis
 });
 
 // Helper to get timeline directory
-function getTimelineDir(rootPath: string | null, presetId: string): string {
-  const PRESET_IDS = ['sound-machina', 'tm4', 'robotstore'];
-  if (PRESET_IDS.includes(presetId)) {
-    return path.join(DATA_DIR, 'presets-evals', presetId, 'timeline');
-  }
-  if (rootPath && isWorkspaceRootSafe(rootPath) && fs.existsSync(rootPath)) {
-    return path.join(rootPath, '.agentdeck', 'timeline');
-  } else {
-    return path.join(DATA_DIR, 'presets-evals', presetId, 'timeline');
-  }
-}
-
-// INTEGRITY MODEL (audit QW2): the "integrity" fields produced here are an
-// UNKEYED, deterministic SHA-256 checksum stored alongside the object. This
-// detects accidental corruption and casual manual edits — it is NOT a digital
-// signature and provides NO tamper resistance against anyone who can recompute
-// the hash after editing (there is no secret key or asymmetric keypair). Do not
-// present these as "cryptographic seals" or "signatures" in user-facing text.
-// TODO(M1.2 / signing): once the threat model is decided, replace with real
-// signing — HMAC-SHA256 keyed by a per-install secret (Electron safeStorage /
-// OS keychain) for local-tamper resistance, or an asymmetric keypair for
-// shareable / team-verifiable governance artifacts.
-//
-// Helper to compute a deterministic SHA-256 integrity checksum of an object
-function computeHash(obj: any): string {
-  if (obj === null || obj === undefined) return '';
-  
-  // Deterministic recursive key sorting and excluding hash keys
-  const sortObject = (o: any): any => {
-    if (o === null || typeof o !== 'object') return o;
-    if (Array.isArray(o)) return o.map(sortObject);
-    return Object.keys(o).sort().reduce((acc: any, key: string) => {
-      if (key === 'hash' || key === 'integrityStatus' || key === 'tampered') {
-        return acc;
-      }
-      acc[key] = sortObject(o[key]);
-      return acc;
-    }, {});
-  };
-  
-  const serialized = JSON.stringify(sortObject(obj));
-  return crypto.createHash('sha256').update(serialized).digest('hex');
-}
-
-// Helper to verify hash integrity of an object
-function verifyHash(obj: any): 'verified' | 'unsigned' | 'tampered' {
-  if (!obj || typeof obj !== 'object') return 'unsigned';
-  
-  const hash = obj.hash || (obj.manifest && obj.manifest.hash);
-  if (!hash) return 'unsigned';
-  
-  const recomputed = computeHash(obj);
-  return hash === recomputed ? 'verified' : 'tampered';
-}
-
 // IPC Handlers for Timeline Persistence
 ipcMain.handle('timeline:load-events', async (_event, { rootPath, presetId }) => {
   try {
@@ -1032,18 +978,6 @@ ipcMain.handle('timeline:save-event', async (_event, { rootPath, presetId, event
 });
 
 // Helper to get governance directory
-function getGovernanceDir(rootPath: string | null, presetId: string): string {
-  const PRESET_IDS = ['sound-machina', 'tm4', 'robotstore'];
-  if (PRESET_IDS.includes(presetId)) {
-    return path.join(DATA_DIR, 'presets-evals', presetId, 'governance');
-  }
-  if (rootPath && isWorkspaceRootSafe(rootPath) && fs.existsSync(rootPath)) {
-    return path.join(rootPath, '.agentdeck', 'governance');
-  } else {
-    return path.join(DATA_DIR, 'presets-evals', presetId, 'governance');
-  }
-}
-
 // IPC Handlers for Governance persistence
 ipcMain.handle('governance:load-data', async (_event, { rootPath, presetId }) => {
   try {
@@ -1191,18 +1125,6 @@ ipcMain.handle('governance:save-candidates', async (_event, { rootPath, presetId
 });
 
 // Helper to get snapshots directory
-function getSnapshotsDir(rootPath: string | null, presetId: string): string {
-  const PRESET_IDS = ['sound-machina', 'tm4', 'robotstore'];
-  if (PRESET_IDS.includes(presetId)) {
-    return path.join(DATA_DIR, 'presets-evals', presetId, 'snapshots');
-  }
-  if (rootPath && isWorkspaceRootSafe(rootPath) && fs.existsSync(rootPath)) {
-    return path.join(rootPath, '.agentdeck', 'snapshots');
-  } else {
-    return path.join(DATA_DIR, 'presets-evals', presetId, 'snapshots');
-  }
-}
-
 // IPC Handlers for Snapshots
 ipcMain.handle('snapshots:load-all', async (_event, { rootPath, presetId }) => {
   try {
@@ -1444,11 +1366,6 @@ ipcMain.handle('snapshots:restore', async (_event, { rootPath, presetId, snapsho
 });
 
 // Helper to get provenance file path
-function getProvenancePath(rootPath: string | null, presetId: string): string {
-  const govDir = getGovernanceDir(rootPath, presetId);
-  return path.join(govDir, 'provenance.json');
-}
-
 // --- Provenance Engine ---
 ipcMain.handle('provenance:load-all', async (_event, { rootPath, presetId }) => {
   try {
@@ -2541,18 +2458,6 @@ ipcMain.handle('doctor:export-diagnostic-bundle', async (_event, { rootPath, pre
 });
 
 // Helper to get decisions directory
-function getDecisionsDir(rootPath: string | null, presetId: string): string {
-  const PRESET_IDS = ['sound-machina', 'tm4', 'robotstore'];
-  if (PRESET_IDS.includes(presetId)) {
-    return path.join(DATA_DIR, 'presets-evals', presetId, 'decisions');
-  }
-  if (rootPath && isWorkspaceRootSafe(rootPath) && fs.existsSync(rootPath)) {
-    return path.join(rootPath, '.agentdeck', 'governance', 'decisions');
-  } else {
-    return path.join(DATA_DIR, 'presets-evals', presetId, 'decisions');
-  }
-}
-
 // Generate human-readable Markdown for compliance archiving
 function generateDEPMarkdown(dep: any): string {
   const riskAssessment = dep.evidence.find((l: any) => l.layerId === 'risk-assessment')?.content || {};
