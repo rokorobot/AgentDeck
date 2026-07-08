@@ -4,10 +4,10 @@
 > into a fresh AI session to continue work with full project context.
 > Regenerate at every milestone release.
 
-**Snapshot:** 2026-07-08 · current version **v1.0.8** (Audit Remediation & Platform Upgrade) · branch `main` @ `d024298`
+**Snapshot:** 2026-07-08 · current version **v1.0.8** (Audit Remediation & Platform Upgrade) · branch `main` @ `67b7848`
 **Repo:** https://github.com/rokorobot/AgentDeck.git
 
-Since the v1.0.8 tag, an internal-hardening arc (v1.0.9, untagged/in progress) has landed on top of it without a version bump: collision-safe IDs (W1), command-safety unification (W2), `scratch/` retirement into real tests (W3), a shared JSON I/O helper (W4), and an in-progress `electron/main.ts` decomposition (W5, one domain per PR). See "Next Milestones" below for exact status and [`docs/roadmap.md`](docs/roadmap.md) for the full forward-looking list.
+Since the v1.0.8 tag, an internal-hardening arc (v1.0.9, untagged) has landed on top of it without a version bump: collision-safe IDs (W1), command-safety unification (W2), `scratch/` retirement into real tests (W3), a shared JSON I/O helper (W4), and the **now-complete** `electron/main.ts` decomposition (W5, one IPC domain per PR — 12 PRs, all merged). See "Next Milestones" below for the completed W5 record and [`docs/roadmap.md`](docs/roadmap.md) for the full forward-looking list.
 
 ## What AgentDeck is
 
@@ -55,7 +55,7 @@ Observability & Health Checks             Port telemetry, Ollama model check, lo
   ```powershell
   tsc --project tsconfig.electron.json
   ```
-- **Automated tests** (183 tests on `main`; `npm audit` at 0):
+- **Automated tests** (333 tests on `main`; `npm audit` at 0):
   ```powershell
   npm test
   npm run build
@@ -66,23 +66,30 @@ Observability & Health Checks             Port telemetry, Ollama model check, lo
 
 - **Electron native TTY grounding has shipped**: the Electron 43 + node-pty 1.1.0 platform upgrade (v1.0.8, see Release Log above) hardened native terminal spawning and verified `cwd` grounding under the new runtime.
 
-### In-progress work (v1.0.9, untagged): `electron/main.ts` decomposition (W5)
+### ✅ COMPLETE (v1.0.9, untagged): `electron/main.ts` decomposition (W5)
 
-`main.ts` (~3,400 lines, ~55 IPC handlers) is being split one domain per PR, behind a `registerXxx(deps)` pattern with a lazy `getMainWindow()` getter, ratified in PR 1:
+The god-file extraction arc is **done**. All 12 scheduled IPC domains were split out of `electron/main.ts` into `electron/ipc/*Handlers.ts`, one domain per PR, behind a `registerXxx(deps)` pattern (deps injected; `getMainWindow()` passed lazily where the window is read). Every PR was a behavior-preserving relocation with build + test + `npm audit` + headless-boot gates and CI-green, branch → PR → merge discipline. **Final merge commit: `67b7848` (PR #22).**
 
-| PR | Domain | Status |
+`electron/main.ts` went from **~1,046 lines → 407** and is now essentially composition/wiring.
+
+| PR | Domain | Module |
 |---|---|---|
-| 1 | `process` | ✅ merged (`f1e7c37`) |
-| 2 | `terminal` | ✅ merged (`d024298`, [PR #11](https://github.com/rokorobot/AgentDeck/pull/11)) |
-| 3 | `ide` | not started |
-| 4 | `system`/misc | not started |
-| 5 | foundation split (`workspacePaths.ts`, `src/lib/integrityChecksum.ts`) | not started |
-| 6–9 | `provenance` → `governance` → `timeline` → `evals` | not started |
-| 10 | `snapshots` | not started |
-| 11 | `doctor` (adopts `src/lib/workspaceDoctor.ts`, needs a fidelity/behavior-diff gate — that module covers 7 of main.ts's 8 current checks) | not started |
-| 12 | `dep` (adopts `src/lib/depRiskEngine.ts`, same fidelity gate, most coupled — last) | not started |
+| 1 | `process` | `electron/ipc/processHandlers.ts` |
+| 2 | `terminal` | `electron/ipc/terminalHandlers.ts` |
+| 3 | `ide` | `electron/ipc/ideHandlers.ts` |
+| 4 | `system`/misc | `electron/ipc/systemHandlers.ts` |
+| 5 | **foundation split** | `electron/workspacePaths.ts` + `src/lib/integrityChecksum.ts` |
+| 6 | `provenance` | `electron/ipc/provenanceHandlers.ts` |
+| 7 | `governance` | `electron/ipc/governanceHandlers.ts` |
+| 8 | `timeline` | `electron/ipc/timelineHandlers.ts` |
+| 9 | `evals` | `electron/ipc/evalsHandlers.ts` |
+| 10 | `snapshots` | `electron/ipc/snapshotsHandlers.ts` |
+| 11 | `doctor` | `electron/ipc/doctorHandlers.ts` |
+| 12 | `dep` | `electron/ipc/depHandlers.ts` |
 
-**To resume:** start PR 3 (`ide`) on a fresh branch (`refactor/extract-ide-ipc`) following the exact PR 1/PR 2 pattern — verbatim relocation, wiring test, headless boot check, honest manual-smoke framing. Full design-gate rationale (dependency graph, sequencing, per-domain gates) was approved before implementation began; ask for it if a fresh session needs the reasoning, not just the checklist above.
+Cross-domain wiring preserved: `doctorHandlers.ts` returns `runDoctorChecksInternal` + `recordRemediationProvenance`, which `main.ts` passes into `registerDepHandlers` (DEP consumes both). Foundation resolvers (`getEvalsDir`/`getTimelineDir`/`getGovernanceDir`/`getSnapshotsDir`/`getDecisionsDir`/`getProvenancePath`) are bound once to `DATA_DIR` via `createWorkspacePaths(DATA_DIR)` and injected; `computeHash`/`verifyHash` are the canonical helpers in `src/lib/integrityChecksum.ts`. **`src/lib/workspaceDoctor.ts` was NOT adopted** — W5 preserved the inline doctor behavior verbatim; any parity merge is a separate, gated effort. Verification: 333/333 tests, build clean, `npm audit` 0, CI green on `67b7848`, `audit-remediation-safety-net` tag untouched at `5005cf0`.
+
+**Remaining inline scope (NOT part of W5, intentionally left in `main.ts`):** the singular `workspace:*` handlers (`load-path`, `check-config`, `initialize`, `save`, `scanAgentTopology`) and `safety:approve`. These were never scheduled for W5. Extracting them (to make `main.ts` purely compositional) is an **optional future W6** — only if approved later; not started.
 
 ### Already-closed items from the audit backlog
 
