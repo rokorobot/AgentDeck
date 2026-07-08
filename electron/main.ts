@@ -12,6 +12,7 @@ import { scanAgentTopologyInternal } from '../src/lib/topologyScanner';
 import { buildIdeOpenCommand, resolveExecutableOnPath, findEditorExecutable, IdeLaunchSpec } from '../src/lib/ideLauncher';
 import { isWorkspaceRootSafe, assertSafeId } from '../src/lib/pathSafety';
 import { registerProcessHandlers } from './ipc/processHandlers';
+import { registerTerminalHandlers } from './ipc/terminalHandlers';
 
 let mainWindow: BrowserWindow | null = null;
 const terminalManager = new TerminalManager();
@@ -194,23 +195,8 @@ ipcMain.handle('safety:approve', async (_event, command: string) => {
   return true;
 });
 
-// --- Terminals ---
-ipcMain.handle('terminal:create', async (_event, { id, shell, args, cwd, cols, rows }) => {
-  return terminalManager.createTerminal(id, shell, args, cwd, cols, rows);
-});
-
-ipcMain.on('terminal:write', (_event, { id, data }) => {
-  terminalManager.write(id, data);
-});
-
-ipcMain.on('terminal:resize', (_event, { id, cols, rows }) => {
-  terminalManager.resize(id, cols, rows);
-});
-
-ipcMain.handle('terminal:kill', async (_event, id: string) => {
-  terminalManager.kill(id);
-  return true;
-});
+// --- Terminals (extracted to ipc/terminalHandlers.ts, W5 PR 2) ---
+registerTerminalHandlers({ ipcMain, terminalManager });
 
 // --- Native Folder Dialog ---
 ipcMain.handle('dialog:open-directory', async () => {
