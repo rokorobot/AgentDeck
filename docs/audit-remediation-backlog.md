@@ -46,7 +46,7 @@
 
 | ID | Area | Finding | Severity | Fix / Acceptance | Effort | Risk | Deps |
 |----|------|---------|----------|------------------|--------|------|------|
-| M2.1 | Store / State + Doctor / DEP / Audit | **IN PROGRESS (v1.0.9 / W4-W5)**: `electron/main.ts` is a ~3,400-line god file holding all ~55 IPC handlers + business logic | High (maint.) | `readJsonSafe`/`writeJsonAtomic` helper shipped (W4, `src/lib/jsonIo.ts`, not yet adopted by any call site). Handler split underway one domain per PR (W5): PR1 `process` ✅ merged, PR2 `terminal` open (#11). Remaining sequence: ide → system/misc → foundation (`workspacePaths.ts`/`integrityChecksum.ts`) → provenance → governance → timeline → evals → snapshots → doctor (adopts `workspaceDoctor.ts`) → dep (adopts `depRiskEngine.ts`). **Acceptance:** behavior unchanged per domain (build+test+smoke gate each PR); `main.ts` < 400 lines when complete | L | Med | M0.1 |
+| M2.1 | Store / State + Doctor / DEP / Audit | **IN PROGRESS (v1.0.9 / W4-W5)**: `electron/main.ts` is a ~3,400-line god file holding all ~55 IPC handlers + business logic | High (maint.) | `readJsonSafe`/`writeJsonAtomic` helper shipped (W4, `src/lib/jsonIo.ts`, not yet adopted by any call site). Handler split underway one domain per PR (W5): PR1 `process` ✅ merged, PR2 `terminal` ✅ merged (#11). Remaining sequence: ide → system/misc → foundation (`workspacePaths.ts`/`integrityChecksum.ts`) → provenance → governance → timeline → evals → snapshots → doctor (adopts `workspaceDoctor.ts`) → dep (adopts `depRiskEngine.ts`). **Acceptance:** behavior unchanged per domain (build+test+smoke gate each PR); `main.ts` < 400 lines when complete | L | Med | M0.1 |
 | M2.2 | Store / State | `workspaceStore.ts` is a ~2,180-line god store (~37 fields, ~51 actions, 10+ domains) | Medium | Split into domain slices (workspace, terminals/process, evals, governance, snapshots, agents). **Acceptance:** views unchanged; each slice independently testable | L | Med | M0.1 |
 | M2.3 | Evaluations | `EvaluationsView.tsx` is 1,383 lines / 29 `useState` / one render function | High | Split into 7 tab components; extract shared `<Tabs>` and `<Modal>` primitives. **Acceptance:** same behavior; each tab file < 300 lines; tab bar/modal come from one shared component | L | Med | — |
 | M2.4 | Terminal / IDE Open | ~~Two divergent command-safety modules (`electron/commandSafety.ts` proper vs `src/lib/commandSafety.ts:35` crude `includes('..')`); pattern list false-positive prone (`\brm\b`, `\bssh\b`)~~ **DONE (v1.0.9 / W2)** | Medium | Unified behind shared pure `src/lib/commandPolicy.ts`; de-noised `rm` (package-manager alias only), `format` (drive-letter required), `ssh`/`scp` (command-position anchored) while keeping all destructive/exfiltration cases blocked. **Acceptance met:** first-ever direct tests on the backend `validateCommand`/`isPathSafe`/approval-TTL path. | M | Low | M0.1 |
@@ -80,7 +80,7 @@
 - *Preserve:* referential-integrity/cross-layer checks in `governanceIntegrity.ts`.
 
 ### Doctor / DEP / Audit
-- **M2.1** — Extract doctor/DEP/provenance handlers out of the god file. **In progress (v1.0.9 / W5):** process ✅, terminal open (#11), doctor/dep still pending.
+- **M2.1** — Extract doctor/DEP/provenance handlers out of the god file. **In progress (v1.0.9 / W5):** process ✅, terminal ✅ (#11), doctor/dep still pending.
 - **M3.4** — Make snapshot restore / governance seal atomic (TOCTOU).
 - *Note:* DEP markdown export currently prints the checksum as "Cryptographic Seal" — covered by QW2's rename.
 
@@ -114,7 +114,7 @@
 3. **Integrity claim correction** — QW2 → M1.2. *Stop asserting a guarantee the code doesn't provide.*
 4. **Path validation** — M1.3. *Close the renderer→disk traversal gap.*
 5. **Electron / dependency upgrade** — M1.4. *Clears the CVE backlog; do after CI can catch regressions.*
-6. **God-file extraction** — M2.1 → M2.2 → M2.3 (+ M2.4). *Refactor only now that tests guard behavior.* **In progress:** M2.4 done (W2); M2.1 underway as v1.0.9 / W5 (one domain per PR — process ✅ merged, terminal open (#11), remaining domains queued); M2.2/M2.3 not started.
+6. **God-file extraction** — M2.1 → M2.2 → M2.3 (+ M2.4). *Refactor only now that tests guard behavior.* **In progress:** M2.4 done (W2); M2.1 underway as v1.0.9 / W5 (one domain per PR — process ✅ merged, terminal ✅ merged (#11), remaining domains queued); M2.2/M2.3 not started.
 7. **Polish** — M3.x as capacity allows.
 
 **Definition of done (release gate):** CI fails on lint/test/high-audit; `commandSafety` + `manifestValidation` + `governanceIntegrity` ≥80% coverage; zero shell-string command construction from renderer input; every "signature/seal" string is HMAC-backed or renamed; one version string across manifest/tag/docs; `LICENSE` present.

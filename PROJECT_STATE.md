@@ -4,7 +4,7 @@
 > into a fresh AI session to continue work with full project context.
 > Regenerate at every milestone release.
 
-**Snapshot:** 2026-07-08 · current version **v1.0.8** (Audit Remediation & Platform Upgrade) · branch `main` @ `f1e7c37`
+**Snapshot:** 2026-07-08 · current version **v1.0.8** (Audit Remediation & Platform Upgrade) · branch `main` @ `d024298`
 **Repo:** https://github.com/rokorobot/AgentDeck.git
 
 Since the v1.0.8 tag, an internal-hardening arc (v1.0.9, untagged/in progress) has landed on top of it without a version bump: collision-safe IDs (W1), command-safety unification (W2), `scratch/` retirement into real tests (W3), a shared JSON I/O helper (W4), and an in-progress `electron/main.ts` decomposition (W5, one domain per PR). See "Next Milestones" below for exact status and [`docs/roadmap.md`](docs/roadmap.md) for the full forward-looking list.
@@ -55,7 +55,7 @@ Observability & Health Checks             Port telemetry, Ollama model check, lo
   ```powershell
   tsc --project tsconfig.electron.json
   ```
-- **Automated tests** (177 tests on `main`; 183 once open PR #11 merges; `npm audit` at 0):
+- **Automated tests** (183 tests on `main`; `npm audit` at 0):
   ```powershell
   npm test
   npm run build
@@ -73,7 +73,7 @@ Observability & Health Checks             Port telemetry, Ollama model check, lo
 | PR | Domain | Status |
 |---|---|---|
 | 1 | `process` | ✅ merged (`f1e7c37`) |
-| 2 | `terminal` | open — [PR #11](https://github.com/rokorobot/AgentDeck/pull/11), CI green, awaiting merge approval |
+| 2 | `terminal` | ✅ merged (`d024298`, [PR #11](https://github.com/rokorobot/AgentDeck/pull/11)) |
 | 3 | `ide` | not started |
 | 4 | `system`/misc | not started |
 | 5 | foundation split (`workspacePaths.ts`, `src/lib/integrityChecksum.ts`) | not started |
@@ -82,7 +82,7 @@ Observability & Health Checks             Port telemetry, Ollama model check, lo
 | 11 | `doctor` (adopts `src/lib/workspaceDoctor.ts`, needs a fidelity/behavior-diff gate — that module covers 7 of main.ts's 8 current checks) | not started |
 | 12 | `dep` (adopts `src/lib/depRiskEngine.ts`, same fidelity gate, most coupled — last) | not started |
 
-**To resume:** merge PR #11 if not already done, then start PR 3 (`ide`) on a fresh branch (`refactor/extract-ide-ipc`) following the exact PR 1/PR 2 pattern — verbatim relocation, wiring test, headless boot check, honest manual-smoke framing. Full design-gate rationale (dependency graph, sequencing, per-domain gates) was approved before implementation began; ask for it if a fresh session needs the reasoning, not just the checklist above.
+**To resume:** start PR 3 (`ide`) on a fresh branch (`refactor/extract-ide-ipc`) following the exact PR 1/PR 2 pattern — verbatim relocation, wiring test, headless boot check, honest manual-smoke framing. Full design-gate rationale (dependency graph, sequencing, per-domain gates) was approved before implementation began; ask for it if a fresh session needs the reasoning, not just the checklist above.
 
 ### Already-closed items from the audit backlog
 
