@@ -16,6 +16,7 @@ import { registerProcessHandlers } from './ipc/processHandlers';
 import { registerTerminalHandlers } from './ipc/terminalHandlers';
 import { registerIdeHandlers } from './ipc/ideHandlers';
 import { registerSystemHandlers } from './ipc/systemHandlers';
+import { registerProvenanceHandlers } from './ipc/provenanceHandlers';
 
 let mainWindow: BrowserWindow | null = null;
 const terminalManager = new TerminalManager();
@@ -1365,100 +1366,8 @@ ipcMain.handle('snapshots:restore', async (_event, { rootPath, presetId, snapsho
   }
 });
 
-// Helper to get provenance file path
-// --- Provenance Engine ---
-ipcMain.handle('provenance:load-all', async (_event, { rootPath, presetId }) => {
-  try {
-    const provenancePath = getProvenancePath(rootPath, presetId);
-    if (!fs.existsSync(provenancePath)) {
-      return [];
-    }
-    const content = fs.readFileSync(provenancePath, 'utf-8');
-    const data = JSON.parse(content);
-    if (!data.records || !Array.isArray(data.records)) {
-      return [];
-    }
-    
-    const list = data.records.map((record: any) => {
-      record.integrityStatus = verifyHash(record);
-      return record;
-    });
-    
-    // Sort descending by timestamp
-    list.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    return list;
-  } catch (error) {
-    console.error('Failed to load provenance records:', error);
-    return [];
-  }
-});
-
-ipcMain.handle('provenance:record-mutation', async (_event, { rootPath, presetId, record }) => {
-  try {
-    const provenancePath = getProvenancePath(rootPath, presetId);
-    const provDir = path.dirname(provenancePath);
-    if (!fs.existsSync(provDir)) {
-      fs.mkdirSync(provDir, { recursive: true });
-    }
-    
-    let data: { records: any[] } = { records: [] };
-    if (fs.existsSync(provenancePath)) {
-      try {
-        const content = fs.readFileSync(provenancePath, 'utf-8');
-        data = JSON.parse(content);
-        if (!data.records || !Array.isArray(data.records)) {
-          data = { records: [] };
-        }
-      } catch (e) {
-        console.error('Failed to parse existing provenance file, resetting:', e);
-      }
-    }
-    
-    const hash = computeHash(record);
-    record.hash = hash;
-    record.integrityStatus = 'verified';
-    
-    data.records.unshift(record);
-    
-    fs.writeFileSync(provenancePath, JSON.stringify(data, null, 2), 'utf-8');
-    return record;
-  } catch (error) {
-    console.error('Failed to record provenance mutation:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('provenance:seal', async (_event, { rootPath, presetId }) => {
-  try {
-    const provenancePath = getProvenancePath(rootPath, presetId);
-    if (!fs.existsSync(provenancePath)) {
-      return { success: false, error: 'No provenance records found.' };
-    }
-    const content = fs.readFileSync(provenancePath, 'utf-8');
-    const data = JSON.parse(content);
-    if (!data.records || !Array.isArray(data.records)) {
-      return { success: false, error: 'No provenance records array found.' };
-    }
-    
-    let sealedCount = 0;
-    for (const record of data.records) {
-      if (!record.hash) {
-        record.hash = computeHash(record);
-        record.integrityStatus = 'verified';
-        sealedCount++;
-      }
-    }
-    
-    if (sealedCount > 0) {
-      fs.writeFileSync(provenancePath, JSON.stringify(data, null, 2), 'utf-8');
-    }
-    
-    return { success: true, sealedCount };
-  } catch (error: any) {
-    console.error('Failed to seal provenance records:', error);
-    return { success: false, error: error.message };
-  }
-});
+// --- Provenance Engine (extracted to ipc/provenanceHandlers.ts, W5 PR 6) ---
+registerProvenanceHandlers({ ipcMain, getProvenancePath });
 
 // Helper to run Workspace Doctor checks
 async function runDoctorChecksInternal(rootPath: string | null, presetId: string): Promise<any> {
