@@ -11,6 +11,7 @@ import { validateManifest } from '../src/lib/manifestValidation';
 import { scanAgentTopologyInternal } from '../src/lib/topologyScanner';
 import { buildIdeOpenCommand, resolveExecutableOnPath, findEditorExecutable, IdeLaunchSpec } from '../src/lib/ideLauncher';
 import { isWorkspaceRootSafe, assertSafeId } from '../src/lib/pathSafety';
+import { registerProcessHandlers } from './ipc/processHandlers';
 
 let mainWindow: BrowserWindow | null = null;
 const terminalManager = new TerminalManager();
@@ -462,24 +463,12 @@ ipcMain.handle('port:check-health', async (_event, url: string) => {
   }
 });
 
-// --- Managed Process Controls ---
-ipcMain.handle('process:start', async (_event, { workspaceId, command, cwd }) => {
-  if (!mainWindow) return null;
-  return await processManager.startProcess(workspaceId, command, cwd, terminalManager, mainWindow);
-});
-
-ipcMain.handle('process:stop', async (_event, runId) => {
-  if (!mainWindow) return false;
-  return await processManager.stopProcess(runId, terminalManager, mainWindow);
-});
-
-ipcMain.handle('process:restart', async (_event, runId) => {
-  if (!mainWindow) return null;
-  return await processManager.restartProcess(runId, terminalManager, mainWindow);
-});
-
-ipcMain.handle('process:list', async () => {
-  return processManager.getProcesses();
+// --- Managed Process Controls (extracted to ipc/processHandlers.ts, W5 PR 1) ---
+registerProcessHandlers({
+  ipcMain,
+  processManager,
+  terminalManager,
+  getMainWindow: () => mainWindow,
 });
 
 // --- Resilient IDE Launcher (hardened: no shell; folderPath passed as literal argv) ---
