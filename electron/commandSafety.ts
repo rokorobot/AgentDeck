@@ -1,33 +1,25 @@
 import path from 'path';
+import { findDangerousMatch } from '../src/lib/commandPolicy';
 
-// Dangerous command matches
-const DANGEROUS_PATTERNS = [
-  /\brm\b/i,
-  /\bdel\b/i,
-  /\brmdir\b/i,
-  /\bformat\b/i,
-  /\bgit\s+reset\s+--hard\b/i,
-  /\bgit\s+clean\b/i,
-  /\bshutdown\b/i,
-  /\bscp\b/i,
-  /\bssh\b/i,
-];
+// Backend enforcement path (the authoritative security boundary, called from
+// terminalManager before writing to the PTY). The dangerous-command
+// classification is delegated to the shared, pure commandPolicy module so it
+// stays identical to the frontend pre-flight check. Path-traversal enforcement
+// (isPathSafe) and the session approval allowlist remain backend-only.
 
 // Memory storage of pre-approved commands for the current session
 const approvedCommands = new Set<string>();
 
 /**
- * Checks if a command string is dangerous based on keyword patterns.
+ * Checks if a command string is dangerous, using the shared command policy.
  */
 export function isCommandDangerous(command: string): boolean {
-  const trimmed = command.trim();
-  if (!trimmed) return false;
-  
-  return DANGEROUS_PATTERNS.some((pattern) => pattern.test(trimmed));
+  return findDangerousMatch(command) !== null;
 }
 
 /**
  * Checks if a command refers to absolute paths or relative parent paths outside the approved workspace path.
+ * Authoritative Node path-resolution check — the real traversal boundary.
  */
 export function isPathSafe(command: string, workspacePath: string): boolean {
   const trimmed = command.trim();
@@ -37,7 +29,7 @@ export function isPathSafe(command: string, workspacePath: string): boolean {
   // Match absolute Windows paths (e.g. C:\...) or Unix-style paths (e.g. /etc) or relative parental navigations (..)
   const pathRegex = /(?:[a-zA-Z]:[\\/][^:\s]+)|(?:\.\.[\\/][^:\s]+)|(?:\/[a-zA-Z_0-9]+[\\/][^:\s]+)/g;
   let match;
-  
+
   while ((match = pathRegex.exec(trimmed)) !== null) {
     const matchedPath = match[0];
     const absolutePath = path.isAbsolute(matchedPath)
@@ -80,7 +72,7 @@ export function validateCommand(command: string, workspacePath: string): {
   reason?: string;
 } {
   const cmd = command.trim();
-  
+
   if (isCommandApproved(cmd)) {
     return { safe: true };
   }

@@ -1,15 +1,10 @@
-// Dangerous command matches in frontend
-const DANGEROUS_PATTERNS = [
-  /\brm\b/i,
-  /\bdel\b/i,
-  /\brmdir\b/i,
-  /\bformat\b/i,
-  /\bgit\s+reset\s+--hard\b/i,
-  /\bgit\s+clean\b/i,
-  /\bshutdown\b/i,
-  /\bscp\b/i,
-  /\bssh\b/i,
-];
+import { findDangerousMatch, looksLikePathEscape } from './commandPolicy';
+
+// Frontend pre-flight warning path. Delegates the dangerous-command
+// classification and the path-escape heuristic to the shared, pure
+// commandPolicy module so it can never drift from the backend enforcement
+// path (electron/commandSafety.ts). This is UX only — the backend
+// validateCommand is the authoritative gate.
 
 /**
  * Checks if a command needs confirmation on the frontend.
@@ -21,19 +16,14 @@ export function checkCommandSafety(command: string, workspacePath: string): {
   const cmd = command.trim();
   if (!cmd) return { safe: true };
 
-  // Check dangerous patterns
-  const matchesDangerous = DANGEROUS_PATTERNS.some((pattern) => pattern.test(cmd));
-  if (matchesDangerous) {
+  if (findDangerousMatch(cmd)) {
     return {
       safe: false,
       reason: `The command "${cmd}" contains potentially destructive operations.`
     };
   }
 
-  // Check path escapes
-  // Simple check for relative parent traversal ".." or absolute paths referencing other letters if we can detect them
-  if (cmd.includes('..') || (/:[\\/]/.test(cmd) && !cmd.toLowerCase().includes(workspacePath.toLowerCase().replace(/\\/g, '/')))) {
-    // If it mentions drive letters or relative parents, suggest confirmation
+  if (looksLikePathEscape(cmd, workspacePath)) {
     return {
       safe: false,
       reason: `The command may access files outside the current workspace path: "${workspacePath}".`
