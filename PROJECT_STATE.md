@@ -4,10 +4,10 @@
 > into a fresh AI session to continue work with full project context.
 > Regenerate at every milestone release.
 
-**Snapshot:** 2026-07-08 · current version **v1.0.8** (Audit Remediation & Platform Upgrade) · branch `main` @ `67b7848`
+**Snapshot:** 2026-07-09 · current version **v1.0.8** (Audit Remediation & Platform Upgrade) · branch `main` @ `a62c12f`
 **Repo:** https://github.com/rokorobot/AgentDeck.git
 
-Since the v1.0.8 tag, an internal-hardening arc (v1.0.9, untagged) has landed on top of it without a version bump: collision-safe IDs (W1), command-safety unification (W2), `scratch/` retirement into real tests (W3), a shared JSON I/O helper (W4), and the **now-complete** `electron/main.ts` decomposition (W5, one IPC domain per PR — 12 PRs, all merged). See "Next Milestones" below for the completed W5 record and [`docs/roadmap.md`](docs/roadmap.md) for the full forward-looking list.
+Since the v1.0.8 tag, an internal-hardening arc (v1.0.9, untagged) has landed on top of it without a version bump: collision-safe IDs (W1), command-safety unification (W2), `scratch/` retirement into real tests (W3), a shared JSON I/O helper (W4), and the **now-complete** `electron/main.ts` decomposition (W5, one IPC domain per PR — 12 PRs, all merged; plus W5.1 final closure, PR #24). See "Next Milestones" below for the completed W5/W5.1 record and [`docs/roadmap.md`](docs/roadmap.md) for the full forward-looking list.
 
 ## What AgentDeck is
 
@@ -55,7 +55,7 @@ Observability & Health Checks             Port telemetry, Ollama model check, lo
   ```powershell
   tsc --project tsconfig.electron.json
   ```
-- **Automated tests** (333 tests on `main`; `npm audit` at 0):
+- **Automated tests** (351 tests on `main`; `npm audit` at 0):
   ```powershell
   npm test
   npm run build
@@ -89,7 +89,18 @@ The god-file extraction arc is **done**. All 12 scheduled IPC domains were split
 
 Cross-domain wiring preserved: `doctorHandlers.ts` returns `runDoctorChecksInternal` + `recordRemediationProvenance`, which `main.ts` passes into `registerDepHandlers` (DEP consumes both). Foundation resolvers (`getEvalsDir`/`getTimelineDir`/`getGovernanceDir`/`getSnapshotsDir`/`getDecisionsDir`/`getProvenancePath`) are bound once to `DATA_DIR` via `createWorkspacePaths(DATA_DIR)` and injected; `computeHash`/`verifyHash` are the canonical helpers in `src/lib/integrityChecksum.ts`. **`src/lib/workspaceDoctor.ts` was NOT adopted** — W5 preserved the inline doctor behavior verbatim; any parity merge is a separate, gated effort. Verification: 333/333 tests, build clean, `npm audit` 0, CI green on `67b7848`, `audit-remediation-safety-net` tag untouched at `5005cf0`.
 
-**Remaining inline scope (NOT part of W5, intentionally left in `main.ts`):** the singular `workspace:*` handlers (`load-path`, `check-config`, `initialize`, `save`, `scanAgentTopology`) and `safety:approve`. These were never scheduled for W5. Extracting them (to make `main.ts` purely compositional) is an **optional future W6** — only if approved later; not started.
+### ✅ COMPLETE: W5.1 — Main Process Final Closure
+
+The two W5-deferred inline domains were extracted in one follow-up PR (**PR #24, merge `a62c12f`**), making `electron/main.ts` purely lifecycle + composition/wiring:
+
+| Module | Channels |
+|---|---|
+| `electron/ipc/safetyHandlers.ts` | `safety:approve` |
+| `electron/ipc/workspaceHandlers.ts` | `workspace:load-path` / `check-config` / `initialize` / `save` / `scanAgentTopology` |
+
+`electron/main.ts` is now **187 lines** (from ~1,046 pre-W5 → 407 post-W5 → 187): `createWindow`, app lifecycle, dir bootstrap, the `createWorkspacePaths(DATA_DIR)` binding, and 14 ordered `register*Handlers(...)` calls — **zero inline IPC handlers remain**. Behavior-preserving relocation only (template wizard, manifest validation, timestamped-backup + atomic write, topology scan all verbatim; sole mechanical edit `WORKSPACES_DIR` → injected `workspacesDir`). Verification: **351/351 tests**, build clean, `npm audit` 0, CI green on `a62c12f`.
+
+**Next milestone: W6 Design Gate — Store/UI Slicing** (renderer subsystem: `workspaceStore.ts` domain slices, `EvaluationsView` decomposition, state boundaries). This is a different subsystem with a different risk profile than W5 and needs its own design gate + frontend-state inventory before any code moves. Not started.
 
 ### Already-closed items from the audit backlog
 
