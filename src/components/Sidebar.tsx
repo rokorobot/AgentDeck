@@ -157,7 +157,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setCurrentTab }) =
         <div className="flex items-center gap-2">
           <Layers className="w-5 h-5 text-blue-500" />
           <span className="font-semibold text-gray-200 tracking-wide text-sm font-sans uppercase">
-            AgentDeck v0.2
+            AgentDeck v1.0.8
           </span>
         </div>
         <button 

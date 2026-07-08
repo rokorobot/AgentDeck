@@ -1,6 +1,6 @@
 {
   "name": "agentdeck-windows",
-  "version": "0.1.0",
+  "version": "1.0.8",
   "description": "AgentDeck for Windows - TM4 Studio Console",
   "main": "dist-electron/electron/main.js",
   "scripts": {
