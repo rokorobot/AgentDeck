@@ -4,8 +4,10 @@
 > into a fresh AI session to continue work with full project context.
 > Regenerate at every milestone release.
 
-**Snapshot:** 2026-07-08 · current version **v1.0.8** (Audit Remediation & Platform Upgrade) · branch `main`
+**Snapshot:** 2026-07-08 · current version **v1.0.8** (Audit Remediation & Platform Upgrade) · branch `main` @ `d024298`
 **Repo:** https://github.com/rokorobot/AgentDeck.git
+
+Since the v1.0.8 tag, an internal-hardening arc (v1.0.9, untagged/in progress) has landed on top of it without a version bump: collision-safe IDs (W1), command-safety unification (W2), `scratch/` retirement into real tests (W3), a shared JSON I/O helper (W4), and an in-progress `electron/main.ts` decomposition (W5, one domain per PR). See "Next Milestones" below for exact status and [`docs/roadmap.md`](docs/roadmap.md) for the full forward-looking list.
 
 ## What AgentDeck is
 
@@ -53,12 +55,35 @@ Observability & Health Checks             Port telemetry, Ollama model check, lo
   ```powershell
   tsc --project tsconfig.electron.json
   ```
-- **Automated state test**:
+- **Automated tests** (183 tests on `main`; `npm audit` at 0):
   ```powershell
-  npx tsx C:\Users\Robert\.gemini\antigravity\brain\9997e5cf-3509-43bd-948f-8f3d39df347c\test_agent_workspace_foundation.ts
+  npm test
+  npm run build
+  npm audit
   ```
 
 ## Next Milestones
 
 - **Electron native TTY grounding has shipped**: the Electron 43 + node-pty 1.1.0 platform upgrade (v1.0.8, see Release Log above) hardened native terminal spawning and verified `cwd` grounding under the new runtime.
-- For current near-term candidates and longer-term deferred ideas (including local agent executor / reasoning-loop integration), see [`docs/roadmap.md`](docs/roadmap.md) — the single source of truth for forward-looking work, kept there so this file doesn't drift out of sync with it.
+
+### In-progress work (v1.0.9, untagged): `electron/main.ts` decomposition (W5)
+
+`main.ts` (~3,400 lines, ~55 IPC handlers) is being split one domain per PR, behind a `registerXxx(deps)` pattern with a lazy `getMainWindow()` getter, ratified in PR 1:
+
+| PR | Domain | Status |
+|---|---|---|
+| 1 | `process` | ✅ merged (`f1e7c37`) |
+| 2 | `terminal` | ✅ merged (`d024298`, [PR #11](https://github.com/rokorobot/AgentDeck/pull/11)) |
+| 3 | `ide` | not started |
+| 4 | `system`/misc | not started |
+| 5 | foundation split (`workspacePaths.ts`, `src/lib/integrityChecksum.ts`) | not started |
+| 6–9 | `provenance` → `governance` → `timeline` → `evals` | not started |
+| 10 | `snapshots` | not started |
+| 11 | `doctor` (adopts `src/lib/workspaceDoctor.ts`, needs a fidelity/behavior-diff gate — that module covers 7 of main.ts's 8 current checks) | not started |
+| 12 | `dep` (adopts `src/lib/depRiskEngine.ts`, same fidelity gate, most coupled — last) | not started |
+
+**To resume:** start PR 3 (`ide`) on a fresh branch (`refactor/extract-ide-ipc`) following the exact PR 1/PR 2 pattern — verbatim relocation, wiring test, headless boot check, honest manual-smoke framing. Full design-gate rationale (dependency graph, sequencing, per-domain gates) was approved before implementation began; ask for it if a fresh session needs the reasoning, not just the checklist above.
+
+### Already-closed items from the audit backlog
+
+Collision-safe IDs (W1), command-safety unification + de-noise (W2), `scratch/` retirement into real tests (W3), and the `readJsonSafe`/`writeJsonAtomic` helper (W4, not yet adopted — that's what W5 is for) are all merged to `main`. See [`docs/audit-remediation-backlog.md`](docs/audit-remediation-backlog.md) for the full, currently-accurate status of every tracked item, and [`docs/roadmap.md`](docs/roadmap.md) for the single source of truth on forward-looking work — kept there so this file doesn't drift out of sync with it.
