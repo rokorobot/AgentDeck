@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import * as crypto from 'crypto';
+import { computeHash, verifyHash } from './integrityChecksum';
 
 /**
  * CHARACTERIZATION MODULE (audit W3 — ported from scratch/test_decision_evidence_package.ts).
@@ -107,30 +107,15 @@ export function computeEvidenceSufficiency(input: EvidenceSufficiencyInput): Evi
 }
 
 /**
- * Deterministic SHA-256 integrity checksum (mirrors main.ts computeHash).
- * NOT a cryptographic signature -- see audit QW2.
+ * Deterministic SHA-256 integrity checksum. NOT a cryptographic signature --
+ * see audit QW2. Canonical implementation now lives in
+ * src/lib/integrityChecksum.ts (W5 PR 5); these names are preserved as thin
+ * aliases for existing consumers (workspaceDoctor.ts and the DEP tests).
  */
-export function computeDeterministicHash(obj: any): string {
-  if (obj === null || obj === undefined) return '';
-  const sortObject = (o: any): any => {
-    if (o === null || typeof o !== 'object') return o;
-    if (Array.isArray(o)) return o.map(sortObject);
-    return Object.keys(o).sort().reduce((acc: any, key: string) => {
-      if (key === 'hash' || key === 'integrityStatus' || key === 'tampered') return acc;
-      acc[key] = sortObject(o[key]);
-      return acc;
-    }, {});
-  };
-  return crypto.createHash('sha256').update(JSON.stringify(sortObject(obj))).digest('hex');
-}
+export const computeDeterministicHash = computeHash;
 
 /** Verifies whether a stored checksum still matches its recomputed value. */
-export function verifyIntegrityHash(obj: any): 'verified' | 'unsigned' | 'tampered' {
-  if (!obj || typeof obj !== 'object') return 'unsigned';
-  const hash = obj.hash || (obj.manifest && obj.manifest.hash);
-  if (!hash) return 'unsigned';
-  return hash === computeDeterministicHash(obj) ? 'verified' : 'tampered';
-}
+export const verifyIntegrityHash = verifyHash;
 
 export interface DepSignoff {
   authority: string;
