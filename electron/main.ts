@@ -9,10 +9,10 @@ import { spawn } from 'child_process';
 import { setLogWindow, addSystemLogInternal } from './logger';
 import { validateManifest } from '../src/lib/manifestValidation';
 import { scanAgentTopologyInternal } from '../src/lib/topologyScanner';
-import { buildIdeOpenCommand, resolveExecutableOnPath, findEditorExecutable, IdeLaunchSpec } from '../src/lib/ideLauncher';
 import { isWorkspaceRootSafe, assertSafeId } from '../src/lib/pathSafety';
 import { registerProcessHandlers } from './ipc/processHandlers';
 import { registerTerminalHandlers } from './ipc/terminalHandlers';
+import { registerIdeHandlers } from './ipc/ideHandlers';
 
 let mainWindow: BrowserWindow | null = null;
 const terminalManager = new TerminalManager();
@@ -457,83 +457,12 @@ registerProcessHandlers({
   getMainWindow: () => mainWindow,
 });
 
-// --- Resilient IDE Launcher (hardened: no shell; folderPath passed as literal argv) ---
-// Resolve the concrete image to spawn. On Windows the PATH entry for editors is a
-// `.cmd` shim that cannot be spawned without a shell, so we locate the real .exe
-// beside it; elsewhere the PATH entry is directly executable.
-function resolveEditorTarget(spec: IdeLaunchSpec): string | null {
-  if (process.platform !== 'win32' || !spec.windowsExeName) {
-    return spec.command;
-  }
-  const shim = resolveExecutableOnPath(spec.command, {
-    pathValue: process.env.PATH || process.env.Path || '',
-    pathext: process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD',
-    fileExists: fs.existsSync,
-  });
-  if (!shim) return null;
-  return findEditorExecutable(shim, spec.windowsExeName, fs.existsSync);
-}
-
-ipcMain.handle('ide:open', async (_event, { ide, folderPath }) => {
-  if (typeof folderPath !== 'string' || !folderPath.trim()) {
-    return { success: false, error: 'A valid folder path is required.' };
-  }
-
-  // Mock target: no process is launched.
-  if (ide === 'antigravity') {
-    addSystemLogInternal(`IDE Open: Mock Antigravity agent opened folder scope "${folderPath}"`, 'success');
-    return { success: true };
-  }
-
-  // Folder/Explorer: use the OS opener directly (no shell, correct exit semantics).
-  if (ide === 'folder') {
-    const openErr = await shell.openPath(folderPath);
-    if (openErr) {
-      addSystemLogInternal(`IDE Launcher Error: failed to open folder "${folderPath}": ${openErr}`, 'error');
-      return { success: false, error: openErr };
-    }
-    addSystemLogInternal(`IDE Open: Successfully opened "${folderPath}" in "folder"`, 'success');
-    return { success: true };
-  }
-
-  // Editors: spawn the real executable with folderPath as a single literal argv
-  // entry. shell:false guarantees shell metacharacters in the path are never
-  // interpreted as syntax.
-  const spec = buildIdeOpenCommand(ide, folderPath);
-  if (!spec) {
-    return { success: false, error: 'Unknown IDE target' };
-  }
-
-  const target = resolveEditorTarget(spec);
-  if (!target) {
-    const msg = `IDE Launcher Error: "${ide}" executable could not be located on your system PATH. Verify it is installed.`;
-    addSystemLogInternal(msg, 'error');
-    return { success: false, error: msg };
-  }
-
-  return new Promise((resolve) => {
-    let settled = false;
-    const child = spawn(target, spec.args, {
-      shell: false,
-      windowsHide: true,
-      detached: true,
-      stdio: 'ignore',
-    });
-    child.on('error', (err) => {
-      if (settled) return;
-      settled = true;
-      console.warn(`[IDE Launcher] Open failed for "${ide}":`, err.message);
-      addSystemLogInternal(`IDE Launcher Error: "${ide}" binary executable failed to run. Verify it is installed and configured in your system environment PATH variables.`, 'error');
-      resolve({ success: false, error: err.message });
-    });
-    child.on('spawn', () => {
-      if (settled) return;
-      settled = true;
-      child.unref();
-      addSystemLogInternal(`IDE Open: Successfully opened "${folderPath}" in "${ide}"`, 'success');
-      resolve({ success: true });
-    });
-  });
+// --- Resilient IDE Launcher (extracted to ipc/ideHandlers.ts, W5 PR 3) ---
+registerIdeHandlers({
+  ipcMain,
+  shell,
+  spawn,
+  addSystemLogInternal,
 });
 
 // Helper to get evaluation directory
