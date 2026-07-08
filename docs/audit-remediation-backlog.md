@@ -57,7 +57,7 @@
 |----|------|---------|----------|------------------|--------|------|------|
 | M3.1 | Store / State | Errors caught but only `console.error`'d; `alert()`/`window.prompt()` used for the ones shown | Medium | Route caught errors through the system-log/toast path; retire `alert`/`prompt`. **Acceptance:** a forced IPC failure is visible in the UI, not just the console | M | Low | — |
 | M3.2 | Docs / Release Identity | `roadmap.md` two generations behind; `architecture.md` repeats the "cryptographic seal" claim | Medium | Update docs to match the tag and the actual integrity mechanism. **Acceptance:** docs describe the shipped version and the real (checksum/HMAC) mechanism | S | Low | M1.2 |
-| M3.3 | Testing | `scratch/*.ts` are ad-hoc simulations standing in for tests | Low | Fold worthwhile scenarios into the Vitest suite; remove or `.gitignore` the rest. **Acceptance:** scratch scenarios covered by real tests or removed | M | Low | M0.1 |
+| M3.3 | Testing | ~~`scratch/*.ts` are ad-hoc simulations standing in for tests~~ **DONE (v1.0.9 / W3)** | Low | Folded worthwhile scenarios into `tests/depRiskEngine.test.ts` and `tests/workspaceDoctor.test.ts` (as characterization modules pending W5); `scratch/` removed. | M | Low | M0.1 |
 | M3.4 | Doctor / DEP / Audit | Non-atomic snapshot restore / governance seal (TOCTOU, partial-write risk) | Medium | Write-to-temp + rename, or a restore lock. **Acceptance:** interrupted restore leaves the prior state intact | M | Med | M2.1 |
 | M3.5 | Terminal / IDE Open | Safety gate is a UX speed-bump, not a boundary (shell-history recall bypasses `commandBuffer` check, `terminalManager.ts:127-140`) | Low | Document the gate's actual guarantee; don't market it as a security control. **Acceptance:** README/architecture state the gate is advisory | S | Low | — |
 
@@ -103,7 +103,7 @@
 - **QW4 / M0.1 / M0.2** — Vitest + coverage on the security/integrity/validation libs.
 - **M0.3** — CI lint + test + audit gates.
 - **M1.4** — Electron/dependency upgrade.
-- **M3.3** — Retire `scratch/` scripts into the suite.
+- ~~**M3.3** — Retire `scratch/` scripts into the suite.~~ **Done (v1.0.9 / W3).**
 
 ---
 

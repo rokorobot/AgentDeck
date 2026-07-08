@@ -34,7 +34,7 @@ Concrete, already-scoped follow-ups from the audit remediation backlog ([`docs/a
 - **`EvaluationsView` decomposition** — break the largest component (1,300+ lines, 7 sub-features) into per-tab components with a shared `<Tabs>`/`<Modal>`.
 - **Error-surfacing polish** — route caught errors to the UI (toast/log) instead of `console.error`-only; retire `alert()`/`window.prompt()`.
 - **Safety-gate de-noise** — unify the two `commandSafety` implementations and reduce false positives (e.g. `npm rm <pkg>` currently gets flagged).
-- **`scratch/` cleanup** — fold the ad-hoc simulation scripts into the real test suite or retire them.
+- ~~**`scratch/` cleanup** — fold the ad-hoc simulation scripts into the real test suite or retire them.~~ **Done (v1.0.9 / W3):** see `tests/depRiskEngine.test.ts` and `tests/workspaceDoctor.test.ts`.
 
 ---
 
