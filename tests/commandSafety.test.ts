@@ -36,11 +36,12 @@ describe('checkCommandSafety — dangerous patterns', () => {
     expect(checkCommandSafety('ShutDown', WS).safe).toBe(false);
   });
 
-  // Documents a KNOWN false-positive from the audit (M2.4): the word-boundary
-  // pattern flags legitimate commands that merely contain "rm"/"del". This test
-  // pins current behavior so the M2.4 de-noise work has a regression baseline.
-  it('KNOWN false positive: flags "npm rm <pkg>" (baseline for M2.4)', () => {
-    expect(checkCommandSafety('npm rm left-pad', WS).safe).toBe(false);
+  // W2 de-noise: the package-manager uninstall alias `npm rm <pkg>` is no
+  // longer flagged (it is a package op, not a filesystem delete). A real rm in
+  // any other context still triggers -- see commandPolicy.test.ts.
+  it('no longer flags "npm rm <pkg>" (W2 de-noise)', () => {
+    expect(checkCommandSafety('npm rm left-pad', WS).safe).toBe(true);
+    expect(checkCommandSafety('pnpm rm foo', WS).safe).toBe(true);
   });
 });
 
