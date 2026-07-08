@@ -98,7 +98,7 @@ if (typeof window !== 'undefined' && !((window as any).api)) {
         }
 
         return {
-          id: `suggest_${Date.now()}`,
+          id: `suggest_${crypto.randomUUID()}`,
           workspaceId,
           detectedFrom,
           confidence: suggestedAgents.length >= 3 ? 'high' : 'medium',

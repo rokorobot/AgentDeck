@@ -81,3 +81,24 @@ describe('scanAgentTopologyInternal — input guarding', () => {
     expect(() => scanAgentTopologyInternal(missing)).toThrow(/does not exist/i);
   });
 });
+
+describe('scanAgentTopologyInternal — id generation (audit W1)', () => {
+  it('produces distinct suggestion ids across rapid back-to-back scans', () => {
+    // Previously `suggest_${Date.now()}` -- two scans in the same millisecond
+    // produced identical ids. Now backed by crypto.randomUUID().
+    const ids = new Set<string>();
+    for (let i = 0; i < 50; i++) {
+      ids.add(scanAgentTopologyInternal(fixtureRoot).id);
+    }
+    expect(ids.size).toBe(50);
+  });
+
+  it('still stamps a real, current ISO timestamp on createdAt (untouched non-id behavior)', () => {
+    const before = Date.now();
+    const result = scanAgentTopologyInternal(fixtureRoot);
+    const after = Date.now();
+    const createdAtMs = new Date(result.createdAt).getTime();
+    expect(createdAtMs).toBeGreaterThanOrEqual(before);
+    expect(createdAtMs).toBeLessThanOrEqual(after);
+  });
+});

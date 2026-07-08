@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { Workspace, ManagedProcess } from '../types/workspace';
 import { checkCommandSafety } from '../lib/commandSafety';
+import { isManagedProcessSessionId } from '../lib/terminalSessionKind';
 import { BenchmarkDefinition, RegressionRun, ApprovalQueueItem, FailureCase, GoldStandard, JudgeDefinition, PromotionHistoryRecord, TestCaseRunResult, BenchmarkReport, BenchmarkTestCase } from '../types/evals';
 import { TimelineEvent } from '../types/timeline';
 import { GovernancePolicy, ReleaseCandidate } from '../types/governance';
@@ -411,15 +412,15 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       // Kill previous terminals (non-managed shell console sessions only)
       // Managed processes are preserved and we don't kill them blindly!
       for (const session of terminalSessions) {
-        // If it starts with 'run-', it's a managed process. Preserve it!
-        if (!session.id.startsWith('run-')) {
+        // If it's a managed process, preserve it!
+        if (!isManagedProcessSessionId(session.id)) {
           await window.api.terminal.kill(session.id);
         }
       }
 
       set({
         activeWorkspace: workspace,
-        terminalSessions: get().terminalSessions.filter((s) => s.id.startsWith('run-')),
+        terminalSessions: get().terminalSessions.filter((s) => isManagedProcessSessionId(s.id)),
         activeTerminalTabId: null,
         previewUrlOverride: null,
       });
@@ -504,7 +505,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     createTerminal: async (name: string, shell: string, cwd: string, initialCommand?: string) => {
       const activeWorkspace = get().activeWorkspace;
       const workspaceId = activeWorkspace ? activeWorkspace.id : 'custom';
-      const termId = `term-${workspaceId}-user-${Date.now()}`;
+      const termId = `term-${workspaceId}-user-${crypto.randomUUID()}`;
 
       try {
         const res = await window.api.terminal.create(termId, shell, [], cwd, 80, 24);
@@ -539,7 +540,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     killTerminal: async (id: string) => {
       try {
         // If killing a managed process tab, trigger process stop sequence too!
-        const isManaged = id.startsWith('run-');
+        const isManaged = isManagedProcessSessionId(id);
         if (isManaged) {
           await get().stopManagedProcess(id);
           return;
@@ -1167,7 +1168,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       const diff = parseFloat((newScore - benchmark.baselineScore).toFixed(2));
       const status = diff < 0 ? 'regression_detected' : 'pass';
       
-      const runId = `run-${Date.now()}`;
+      const runId = `run-${crypto.randomUUID()}`;
       const timestamp = new Date().toISOString();
 
       let failuresCount = 0;
@@ -1177,7 +1178,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         failuresCount = 1;
         if (activeWorkspace.id === 'sound-machina') {
           newFailure = {
-            id: `fail-${Date.now()}`,
+            id: `fail-${crypto.randomUUID()}`,
             benchmarkId,
             prompt: 'Ambient synth drone',
             expected: 'Low-frequency drone with slow resonant sweep and wide stereo field.',
@@ -1188,7 +1189,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
           };
         } else if (activeWorkspace.id === 'tm4') {
           newFailure = {
-            id: `fail-${Date.now()}`,
+            id: `fail-${crypto.randomUUID()}`,
             benchmarkId,
             prompt: 'System Run Architecture Validation',
             expected: 'All output files conform to schemaVersion v2 layout.',
@@ -1199,7 +1200,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
           };
         } else {
           newFailure = {
-            id: `fail-${Date.now()}`,
+            id: `fail-${crypto.randomUUID()}`,
             benchmarkId,
             prompt: 'Standard test input prompt',
             expected: 'Response contains appropriate context values.',
@@ -1369,7 +1370,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
             policyReasons.push(`All policy metrics and regression gates passed`);
           }
 
-          const candidateId = `rc-${Date.now()}`;
+          const candidateId = `rc-${crypto.randomUUID()}`;
           const rcCount = get().releaseCandidates.length + 1;
           const version = `v${totalCases > 0 ? '1.0' : '0.9'}.${rcCount}-rc${rcCount}`;
           
@@ -1700,7 +1701,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       const failure = get().failures.find(f => f.id === failureId);
       if (!failure) return;
 
-      const testCaseId = `tc-${Date.now()}`;
+      const testCaseId = `tc-${crypto.randomUUID()}`;
       const testCase: BenchmarkTestCase = {
         id: testCaseId,
         benchmarkId,
@@ -1821,7 +1822,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       const finalActor: TimelineEvent['actor'] = actor || (type === 'regression_executed' ? 'simulator' : 'operator');
 
       const event: TimelineEvent = {
-        id: `evt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        id: `evt-${crypto.randomUUID()}`,
         schemaVersion: 'agentdeck.timeline.v1',
         timestamp: new Date().toISOString(),
         workspaceId: activeWorkspace.id,
@@ -2158,7 +2159,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
 
       const record = {
         schemaVersion: "agentdeck.provenance.v1",
-        id: `prov_${Date.now()}`,
+        id: `prov_${crypto.randomUUID()}`,
         timestamp: new Date().getTime(),
         actor: "operator", // Could be dynamic later
         mutationType: type,
@@ -2309,7 +2310,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       if (!activeWorkspace) return;
 
       const newAgent: Agent = {
-        id: `agent_${Date.now()}`,
+        id: `agent_${crypto.randomUUID()}`,
         workspaceId: activeWorkspace.id,
         name,
         role,
@@ -2383,7 +2384,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       const agent = activeWorkspace.agents.find(a => a.id === agentId);
       if (!agent) return;
 
-      const sessionId = `session_${Date.now()}`;
+      const sessionId = `session_${crypto.randomUUID()}`;
       const termName = `${agent.name} Shell`;
       const cwd = activeWorkspace.rootPath || 'C:\\Users\\Robert\\AgentDeck';
       const shell = 'powershell.exe';

@@ -246,7 +246,7 @@ export function scanAgentTopologyInternal(rootPath: string): AgentTopologySugges
   const workspaceId = path.basename(rootPath);
 
   return {
-    id: `suggest_${Date.now()}`,
+    id: `suggest_${crypto.randomUUID()}`,
     workspaceId,
     detectedFrom,
     confidence,
