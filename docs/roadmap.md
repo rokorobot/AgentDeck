@@ -29,12 +29,14 @@ The current shipped state. See [`PROJECT_STATE.md`](../PROJECT_STATE.md) for the
 
 Concrete, already-scoped follow-ups from the audit remediation backlog ([`docs/audit-remediation-backlog.md`](audit-remediation-backlog.md)), not yet scheduled:
 
-- **Real integrity signing** — replace the unkeyed SHA-256 checksum with HMAC (per-install secret) or asymmetric signing, once the threat model is decided (accidental-corruption detection vs. tamper resistance vs. shared/team-manifest verification).
-- **God-file extraction** — split `electron/main.ts`'s ~50 IPC handlers into per-domain modules behind a shared `readJsonSafe`/`writeJsonAtomic` helper, and split `workspaceStore.ts` into domain slices.
-- **`EvaluationsView` decomposition** — break the largest component (1,300+ lines, 7 sub-features) into per-tab components with a shared `<Tabs>`/`<Modal>`.
-- **Error-surfacing polish** — route caught errors to the UI (toast/log) instead of `console.error`-only; retire `alert()`/`window.prompt()`.
-- **Safety-gate de-noise** — unify the two `commandSafety` implementations and reduce false positives (e.g. `npm rm <pkg>` currently gets flagged).
+- **Real integrity signing** — replace the unkeyed SHA-256 checksum with HMAC (per-install secret) or asymmetric signing, once the threat model is decided (accidental-corruption detection vs. tamper resistance vs. shared/team-manifest verification). Not started.
+- **God-file extraction** — split `electron/main.ts`'s ~55 IPC handlers into per-domain modules, and split `workspaceStore.ts` into domain slices. **In progress as v1.0.9 / W5**, one domain per PR: PR1 `process` ✅ merged, PR2 `terminal` open ([#11](https://github.com/rokorobot/AgentDeck/pull/11)). Remaining order: ide → system/misc → foundation split (paths + integrity-checksum helpers) → provenance → governance → timeline → evals → snapshots → doctor (adopts `src/lib/workspaceDoctor.ts`) → dep (adopts `src/lib/depRiskEngine.ts`). `workspaceStore.ts` slicing is a separate, not-yet-started W6.
+- **`EvaluationsView` decomposition** — break the largest component (1,300+ lines, 7 sub-features) into per-tab components with a shared `<Tabs>`/`<Modal>`. Not started.
+- **Error-surfacing polish** — route caught errors to the UI (toast/log) instead of `console.error`-only; retire `alert()`/`window.prompt()`. Not started.
+- ~~**Safety-gate de-noise** — unify the two `commandSafety` implementations and reduce false positives (e.g. `npm rm <pkg>` currently gets flagged).~~ **Done (v1.0.9 / W2):** shared `src/lib/commandPolicy.ts`; see `tests/commandPolicy.test.ts` and `tests/commandSafetyBackend.test.ts`.
 - ~~**`scratch/` cleanup** — fold the ad-hoc simulation scripts into the real test suite or retire them.~~ **Done (v1.0.9 / W3):** see `tests/depRiskEngine.test.ts` and `tests/workspaceDoctor.test.ts`.
+- ~~**Collision-safe IDs** — `Date.now()`-based IDs could collide within the same millisecond.~~ **Done (v1.0.9 / W1):** all 24 true ID-generator sites now use `crypto.randomUUID()`; see `tests/idGeneration.test.ts`.
+- ~~**Shared JSON I/O helper** — collapse ~30 duplicated read/parse/write sites in `main.ts` into one tested utility.~~ **Helper done (v1.0.9 / W4)**, `src/lib/jsonIo.ts`; adoption into `main.ts` happens per-domain as the god-file extraction above proceeds.
 
 ---
 
