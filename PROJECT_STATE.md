@@ -60,5 +60,5 @@ Observability & Health Checks             Port telemetry, Ollama model check, lo
 
 ## Next Milestones
 
-1. **Electron Native Grounding (v1.0.7)**: Hardening native TTY terminal spawning, managing child process lifecycles, and ensuring `cwd` grounding robustly behaves across multiple platforms.
-2. **Local Agent Executor Integration**: Connecting local agent reasoning loops with the spawned grounded terminals and safety check approval queue pipelines.
+- **Electron native TTY grounding has shipped**: the Electron 43 + node-pty 1.1.0 platform upgrade (v1.0.8, see Release Log above) hardened native terminal spawning and verified `cwd` grounding under the new runtime.
+- For current near-term candidates and longer-term deferred ideas (including local agent executor / reasoning-loop integration), see [`docs/roadmap.md`](docs/roadmap.md) — the single source of truth for forward-looking work, kept there so this file doesn't drift out of sync with it.
