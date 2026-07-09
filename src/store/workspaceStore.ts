@@ -8,7 +8,7 @@ import { GovernancePolicy, ReleaseCandidate } from '../types/governance';
 import { SnapshotManifest, SnapshotPayload } from '../types/snapshot';
 import { createDoctorSlice, DoctorSlice } from './slices/doctorSlice';
 import { createProvenanceSlice, ProvenanceSlice } from './slices/provenanceSlice';
-import { DecisionEvidencePackage } from '../types/decisionEvidence';
+import { createDepSlice, DepSlice } from './slices/depSlice';
 import { Agent, AgentSession, AgentWindow, AgentTool, AgentModelBinding } from '../types/agent';
 
 // The global `window.api` (Electron preload bridge) type augmentation lives in
@@ -41,7 +41,7 @@ export interface WorkspaceObservability {
 // WorkspaceStore is exported (type-only) so domain slices can type themselves
 // as WorkspaceSliceCreator<WorkspaceStore, TSlice> — additive, does not change
 // the runtime hook identity, store shape, action names, or consumer API.
-export interface WorkspaceStore extends DoctorSlice, ProvenanceSlice {
+export interface WorkspaceStore extends DoctorSlice, ProvenanceSlice, DepSlice {
   workspaces: Workspace[];
   workspacePaths: string[];
   activeWorkspace: Workspace | null;
@@ -141,28 +141,7 @@ export interface WorkspaceStore extends DoctorSlice, ProvenanceSlice {
 
   // Doctor State & Actions — provided by DoctorSlice (see `extends` above / src/store/slices/doctorSlice.ts)
 
-  // Decision Evidence Package (DEP) State & Actions
-  decisionEvidenceList: DecisionEvidencePackage[];
-  loadDecisionEvidence(): Promise<void>;
-  generateDecisionEvidence(candidateId: string): Promise<DecisionEvidencePackage>;
-  signAndSaveDecisionEvidence(
-    dep: DecisionEvidencePackage,
-    decisionRationale: string,
-    decisionClass: 'routine' | 'material' | 'critical',
-    overrideReason?: string
-  ): Promise<{ success: boolean; dep?: DecisionEvidencePackage; error?: string }>;
-  verifyDecisionEvidence(depId: string): Promise<{
-    success: boolean;
-    hashValid?: boolean;
-    signatureValid?: boolean;
-    rcExists?: boolean;
-    snapshotExists?: boolean;
-    provenanceExists?: boolean;
-    integrityStatus?: 'verified' | 'unsigned' | 'tampered';
-    error?: string;
-  }>;
-  exportDecisionEvidenceJson(depId: string): Promise<{ success: boolean; filePath?: string; error?: string }>;
-  exportDecisionEvidenceMarkdown(depId: string): Promise<{ success: boolean; filePath?: string; error?: string }>;
+  // Decision Evidence Package (DEP) State & Actions — provided by DepSlice (see `extends` above / src/store/slices/depSlice.ts)
 
   // Agent Workspace State & Actions
   agentSessions: AgentSession[];
@@ -212,7 +191,6 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get, store) => {
     governancePolicies: null,
     releaseCandidates: [],
     snapshotsList: [],
-    decisionEvidenceList: [],
     agentSessions: [],
     agentWindows: [],
 
@@ -222,8 +200,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get, store) => {
     //     exportDiagnosticBundle.
     //   Provenance: provenanceList + loadProvenance / recordProvenance (the
     //     latter is an inbound utility other domains call via get()).
+    //   DEP: decisionEvidenceList + load/generate/signAndSave/verify/exportJson/
+    //     exportMarkdown (signAndSave refreshes governance releaseCandidates on
+    //     success — existing cross-domain behavior, preserved).
     ...createDoctorSlice(set, get, store),
     ...createProvenanceSlice(set, get, store),
+    ...createDepSlice(set, get, store),
 
     init: async () => {
       // 1. Load layout configs and logs
@@ -2027,84 +2009,6 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get, store) => {
         
         return { success: false, error: result.error };
       }
-    },
-
-    loadDecisionEvidence: async () => {
-      const activeWorkspace = get().activeWorkspace;
-      if (!activeWorkspace) return;
-      const rootPath = activeWorkspace.rootPath || null;
-      const presetId = activeWorkspace.id;
-      try {
-        const deps = await window.api.dep.loadAll(rootPath, presetId);
-        set({ decisionEvidenceList: deps || [] });
-      } catch (err) {
-        console.error('Failed to load decision evidence', err);
-      }
-    },
-
-    generateDecisionEvidence: async (candidateId: string) => {
-      const activeWorkspace = get().activeWorkspace;
-      if (!activeWorkspace) throw new Error("No active workspace.");
-      const rootPath = activeWorkspace.rootPath || null;
-      const presetId = activeWorkspace.id;
-      return await window.api.dep.generate(rootPath, presetId, candidateId);
-    },
-
-    signAndSaveDecisionEvidence: async (
-      dep: DecisionEvidencePackage,
-      decisionRationale: string,
-      decisionClass: 'routine' | 'material' | 'critical',
-      overrideReason?: string
-    ) => {
-      const activeWorkspace = get().activeWorkspace;
-      if (!activeWorkspace) return { success: false, error: "No active workspace." };
-      const rootPath = activeWorkspace.rootPath || null;
-      const presetId = activeWorkspace.id;
-      try {
-        const result = await window.api.dep.signAndSave(
-          rootPath,
-          presetId,
-          dep,
-          decisionRationale,
-          decisionClass,
-          overrideReason
-        );
-        if (result.success) {
-          await get().addSystemLog(`Decision package ${dep.id} signed and archived successfully`, 'success');
-          await get().loadDecisionEvidence();
-          // Reload candidates as status changed
-          const govData = await window.api.governance.loadData(rootPath, presetId);
-          set({ releaseCandidates: govData.releaseCandidates || [] });
-        }
-        return result;
-      } catch (err: any) {
-        console.error('Failed to sign and save decision evidence', err);
-        return { success: false, error: err.message };
-      }
-    },
-
-    verifyDecisionEvidence: async (depId: string) => {
-      const activeWorkspace = get().activeWorkspace;
-      if (!activeWorkspace) return { success: false, error: "No active workspace." };
-      const rootPath = activeWorkspace.rootPath || null;
-      const presetId = activeWorkspace.id;
-      return await window.api.dep.verify(rootPath, presetId, depId);
-    },
-
-    exportDecisionEvidenceJson: async (depId: string) => {
-      const activeWorkspace = get().activeWorkspace;
-      if (!activeWorkspace) return { success: false, error: "No active workspace." };
-      const rootPath = activeWorkspace.rootPath || null;
-      const presetId = activeWorkspace.id;
-      return await window.api.dep.exportJson(rootPath, presetId, depId);
-    },
-
-    exportDecisionEvidenceMarkdown: async (depId: string) => {
-      const activeWorkspace = get().activeWorkspace;
-      if (!activeWorkspace) return { success: false, error: "No active workspace." };
-      const rootPath = activeWorkspace.rootPath || null;
-      const presetId = activeWorkspace.id;
-      return await window.api.dep.exportMarkdown(rootPath, presetId, depId);
     },
 
     addAgent: async (name: string, role: string, modelBinding: AgentModelBinding, tools: AgentTool[]) => {
