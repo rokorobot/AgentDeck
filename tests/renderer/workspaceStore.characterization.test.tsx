@@ -136,3 +136,71 @@ describe('workspaceStore — system/reset path', () => {
     expect(result).toBe(true);
   });
 });
+
+describe('workspaceStore — doctor domain (W6-3 p1 pre-slice characterization)', () => {
+  // These pin the CURRENT inline Doctor behavior + its cross-domain coupling
+  // before the DoctorSlice extraction, so the slice move is provably behavior-
+  // preserving. Written against the un-moved code.
+
+  it('runDoctorChecks() calls doctor.runChecks and stores the report (with active workspace)', async () => {
+    const report = { status: 'healthy', timestamp: 0, checks: [] };
+    const { store, api } = await freshStore({
+      doctor: { runChecks: vi.fn(async () => report) },
+    });
+    store.setState({ activeWorkspace: { id: 'tm4', name: 'TM4', rootPath: null } as any });
+
+    await store.getState().runDoctorChecks();
+
+    expect(api.doctor.runChecks).toHaveBeenCalledWith(null, 'tm4');
+    expect(store.getState().doctorReport).toEqual(report);
+  });
+
+  it('runDoctorChecks() early-returns without an active workspace (no API call, report stays null)', async () => {
+    const { store, api } = await freshStore();
+    // No active workspace seeded (default null).
+    await store.getState().runDoctorChecks();
+
+    expect(api.doctor.runChecks).not.toHaveBeenCalled();
+    expect(store.getState().doctorReport).toBeNull();
+  });
+
+  it('repairWorkspaceCheck() calls doctor.repair, re-runs doctor checks, and returns the repair result', async () => {
+    const repairResult = { success: false, error: 'still broken' };
+    const { store, api } = await freshStore({
+      doctor: { repair: vi.fn(async () => repairResult) },
+    });
+    store.setState({ activeWorkspace: { id: 'tm4', name: 'TM4', rootPath: null } as any });
+
+    const result = await store.getState().repairWorkspaceCheck('check-1');
+
+    expect(api.doctor.repair).toHaveBeenCalledWith(null, 'tm4', 'check-1');
+    // Re-check coupling: repair unconditionally re-invokes runDoctorChecks().
+    expect(api.doctor.runChecks).toHaveBeenCalledTimes(1);
+    // Returns the repair result verbatim (not the re-check result).
+    expect(result).toEqual(repairResult);
+  });
+
+  it('exportDiagnosticBundle() calls the API and logs on success', async () => {
+    const { store, api } = await freshStore({
+      doctor: { exportDiagnosticBundle: vi.fn(async () => ({ success: true })) },
+    });
+    store.setState({ activeWorkspace: { id: 'tm4', name: 'TM4', rootPath: null } as any });
+
+    const result = await store.getState().exportDiagnosticBundle();
+
+    expect(api.doctor.exportDiagnosticBundle).toHaveBeenCalledWith(null, 'tm4');
+    expect(api.logs.add).toHaveBeenCalled(); // success path logs via addSystemLog
+    expect(result).toEqual({ success: true });
+  });
+
+  it('loadEvalsData() triggers a doctor refresh at its tail (cross-domain inbound coupling)', async () => {
+    const { store, api } = await freshStore();
+    store.setState({ activeWorkspace: { id: 'tm4', name: 'TM4', rootPath: null } as any });
+
+    await store.getState().loadEvalsData();
+
+    // The evals-load path must keep pulling a fresh doctor report through the
+    // shared store closure — this is the coupling the slice extraction preserves.
+    expect(api.doctor.runChecks).toHaveBeenCalledWith(null, 'tm4');
+  });
+});
