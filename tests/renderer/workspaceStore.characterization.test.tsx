@@ -204,3 +204,84 @@ describe('workspaceStore — doctor domain (W6-3 p1 pre-slice characterization)'
     expect(api.doctor.runChecks).toHaveBeenCalledWith(null, 'tm4');
   });
 });
+
+describe('workspaceStore — provenance domain (W6-3 p2 pre-slice characterization)', () => {
+  // Provenance is a leaf slice (nothing it owns reaches out beyond activeWorkspace),
+  // but recordProvenance() is an INBOUND utility called from several domains via
+  // get().recordProvenance(...). These pin both the direct actions AND two inbound
+  // caller chains from different domains, so the shared-closure contract is proven
+  // to survive the slice move. Written against the un-moved inline code.
+
+  it('loadProvenance() calls provenance.loadAll and stores the records (with active workspace)', async () => {
+    const records = [{ id: 'prov-1' }, { id: 'prov-2' }];
+    const { store, api } = await freshStore({
+      provenance: { loadAll: vi.fn(async () => records) },
+    });
+    store.setState({ activeWorkspace: { id: 'tm4', name: 'TM4', rootPath: null } as any });
+
+    await store.getState().loadProvenance();
+
+    expect(api.provenance.loadAll).toHaveBeenCalledWith(null, 'tm4');
+    expect(store.getState().provenanceList).toEqual(records);
+  });
+
+  it('loadProvenance() early-returns without an active workspace (no API call)', async () => {
+    const { store, api } = await freshStore();
+    await store.getState().loadProvenance();
+    expect(api.provenance.loadAll).not.toHaveBeenCalled();
+  });
+
+  it('recordProvenance() calls provenance.recordMutation and prepends the saved record', async () => {
+    const saved = { id: 'prov-saved' };
+    const { store, api } = await freshStore({
+      provenance: { recordMutation: vi.fn(async () => saved) },
+    });
+    store.setState({ activeWorkspace: { id: 'tm4', name: 'TM4', rootPath: null } as any });
+
+    await store.getState().recordProvenance('policy_updated', 'policy', 'src-1', { a: 1 }, { a: 2 });
+
+    expect(api.provenance.recordMutation).toHaveBeenCalledTimes(1);
+    const [rootPathArg, presetIdArg, recordArg] = api.provenance.recordMutation.mock.calls[0];
+    expect(rootPathArg).toBeNull();
+    expect(presetIdArg).toBe('tm4');
+    // The record the store constructs carries the mutation metadata verbatim.
+    expect(recordArg.mutationType).toBe('policy_updated');
+    expect(recordArg.sourceType).toBe('policy');
+    expect(recordArg.sourceId).toBe('src-1');
+    expect(recordArg.before).toEqual({ a: 1 });
+    expect(recordArg.after).toEqual({ a: 2 });
+    // Newest-first prepend of the API's returned record.
+    expect(store.getState().provenanceList[0]).toEqual(saved);
+  });
+
+  it('recordProvenance() early-returns without an active workspace (no API call)', async () => {
+    const { store, api } = await freshStore();
+    await store.getState().recordProvenance('policy_updated', 'policy', 'src-1', null, null);
+    expect(api.provenance.recordMutation).not.toHaveBeenCalled();
+  });
+
+  it('INBOUND (governance): saveGovernancePolicies() records provenance via get().recordProvenance()', async () => {
+    const { store, api } = await freshStore();
+    store.setState({ activeWorkspace: { id: 'tm4', name: 'TM4', rootPath: null } as any });
+
+    await store.getState().saveGovernancePolicies({
+      schemaVersion: 'agentdeck.governance.v1', minScore: 0.9, allowRegression: false, requireApproval: true,
+    } as any);
+
+    // The governance→provenance chain must keep flowing through the shared closure.
+    expect(api.provenance.recordMutation).toHaveBeenCalled();
+  });
+
+  it('INBOUND (gold standards): saveGoldStandard() records provenance via get().recordProvenance()', async () => {
+    const { store, api } = await freshStore();
+    store.setState({ activeWorkspace: { id: 'tm4', name: 'TM4', rootPath: null } as any });
+
+    await store.getState().saveGoldStandard({
+      id: 'gold-1', title: 'G1', content: 'c', tags: ['t'], type: 'prompt', source: 'operator', createdAt: '2026-01-01T00:00:00.000Z',
+    } as any);
+
+    // A second inbound domain proves the coupling is not governance-specific.
+    expect(api.evals.saveGoldStandard).toHaveBeenCalled();
+    expect(api.provenance.recordMutation).toHaveBeenCalled();
+  });
+});

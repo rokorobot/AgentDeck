@@ -7,6 +7,7 @@ import { TimelineEvent } from '../types/timeline';
 import { GovernancePolicy, ReleaseCandidate } from '../types/governance';
 import { SnapshotManifest, SnapshotPayload } from '../types/snapshot';
 import { createDoctorSlice, DoctorSlice } from './slices/doctorSlice';
+import { createProvenanceSlice, ProvenanceSlice } from './slices/provenanceSlice';
 import { DecisionEvidencePackage } from '../types/decisionEvidence';
 import { Agent, AgentSession, AgentWindow, AgentTool, AgentModelBinding } from '../types/agent';
 
@@ -40,7 +41,7 @@ export interface WorkspaceObservability {
 // WorkspaceStore is exported (type-only) so domain slices can type themselves
 // as WorkspaceSliceCreator<WorkspaceStore, TSlice> — additive, does not change
 // the runtime hook identity, store shape, action names, or consumer API.
-export interface WorkspaceStore extends DoctorSlice {
+export interface WorkspaceStore extends DoctorSlice, ProvenanceSlice {
   workspaces: Workspace[];
   workspacePaths: string[];
   activeWorkspace: Workspace | null;
@@ -136,16 +137,7 @@ export interface WorkspaceStore extends DoctorSlice {
   createSnapshot(description: string, type?: SnapshotManifest['type'], parentSnapshotId?: string): Promise<void>;
   restoreSnapshot(snapshotId: string): Promise<{ success: boolean; error?: string }>;
 
-  // Provenance State & Actions
-  provenanceList: any[];
-  loadProvenance(): Promise<void>;
-  recordProvenance(
-    type: 'baseline_promoted' | 'failure_converted' | 'policy_updated' | 'release_candidate_updated' | 'snapshot_restored' | 'manifest_saved' | 'gold_standard_saved' | 'gold_standard_deleted',
-    source: 'timeline_event' | 'benchmark' | 'failure' | 'policy' | 'release_candidate' | 'snapshot' | 'manifest' | 'gold_standard',
-    sourceId: string,
-    before: any,
-    after: any
-  ): Promise<void>;
+  // Provenance State & Actions — provided by ProvenanceSlice (see `extends` above / src/store/slices/provenanceSlice.ts)
 
   // Doctor State & Actions — provided by DoctorSlice (see `extends` above / src/store/slices/doctorSlice.ts)
 
@@ -220,15 +212,18 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get, store) => {
     governancePolicies: null,
     releaseCandidates: [],
     snapshotsList: [],
-    provenanceList: [],
     decisionEvidenceList: [],
     agentSessions: [],
     agentWindows: [],
 
     // Domain slices (W6-3) — spread into the same store object so the single
-    // shared (set, get) closure is preserved. Doctor: doctorReport state +
-    // runDoctorChecks / repairWorkspaceCheck / exportDiagnosticBundle.
+    // shared (set, get) closure is preserved.
+    //   Doctor: doctorReport + runDoctorChecks / repairWorkspaceCheck /
+    //     exportDiagnosticBundle.
+    //   Provenance: provenanceList + loadProvenance / recordProvenance (the
+    //     latter is an inbound utility other domains call via get()).
     ...createDoctorSlice(set, get, store),
+    ...createProvenanceSlice(set, get, store),
 
     init: async () => {
       // 1. Load layout configs and logs
@@ -2031,44 +2026,6 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get, store) => {
         );
         
         return { success: false, error: result.error };
-      }
-    },
-
-    loadProvenance: async () => {
-      const activeWorkspace = get().activeWorkspace;
-      if (!activeWorkspace) return;
-      const rootPath = activeWorkspace.rootPath || null;
-      const presetId = activeWorkspace.id;
-      
-      const records = await window.api.provenance.loadAll(rootPath, presetId);
-      set({ provenanceList: records });
-    },
-
-    recordProvenance: async (type, source, sourceId, before, after) => {
-      const activeWorkspace = get().activeWorkspace;
-      if (!activeWorkspace) return;
-      const rootPath = activeWorkspace.rootPath || null;
-      const presetId = activeWorkspace.id;
-
-      const record = {
-        schemaVersion: "agentdeck.provenance.v1",
-        id: `prov_${crypto.randomUUID()}`,
-        timestamp: new Date().getTime(),
-        actor: "operator", // Could be dynamic later
-        mutationType: type,
-        sourceType: source,
-        sourceId,
-        before,
-        after
-      };
-
-      try {
-        const savedRecord = await window.api.provenance.recordMutation(rootPath, presetId, record);
-        set((state) => ({
-          provenanceList: [savedRecord, ...state.provenanceList]
-        }));
-      } catch (err) {
-        console.error("Failed to record provenance mutation", err);
       }
     },
 
