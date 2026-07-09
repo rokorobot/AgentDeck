@@ -4,10 +4,10 @@
 > into a fresh AI session to continue work with full project context.
 > Regenerate at every milestone release.
 
-**Snapshot:** 2026-07-09 · current version **v1.0.8** (Audit Remediation & Platform Upgrade) · branch `main` @ `2dc5fc2`
+**Snapshot:** 2026-07-09 · current version **v1.0.8** (Audit Remediation & Platform Upgrade) · branch `main` @ `9bc2f13`
 **Repo:** https://github.com/rokorobot/AgentDeck.git
 
-Since the v1.0.8 tag, an internal-hardening arc (v1.0.9, untagged) has landed on top of it without a version bump: collision-safe IDs (W1), command-safety unification (W2), `scratch/` retirement into real tests (W3), a shared JSON I/O helper (W4), the **now-complete** `electron/main.ts` decomposition (W5, one IPC domain per PR — 12 PRs, all merged; plus W5.1 final closure, PR #24), and the **in-progress** renderer store/UI slicing (W6). See "Next Milestones" below for the completed W5/W5.1 record and the current W6 status, and [`docs/roadmap.md`](docs/roadmap.md) for the full forward-looking list.
+Since the v1.0.8 tag, an internal-hardening arc (v1.0.9, untagged) has landed on top of it without a version bump: collision-safe IDs (W1), command-safety unification (W2), `scratch/` retirement into real tests (W3), a shared JSON I/O helper (W4), the **now-complete** `electron/main.ts` decomposition (W5, one IPC domain per PR — 12 PRs, all merged; plus W5.1 final closure, PR #24), and the **now-complete** renderer `EvaluationsView` tab extraction (W6-1, 7 PRs, all merged). See "Next Milestones" below for the completed W5/W5.1/W6-1 record and the gated W6-3 store-slicing next step, and [`docs/roadmap.md`](docs/roadmap.md) for the full forward-looking list.
 
 ## What AgentDeck is
 
@@ -55,7 +55,7 @@ Observability & Health Checks             Port telemetry, Ollama model check, lo
   ```powershell
   tsc --project tsconfig.electron.json
   ```
-- **Automated tests** (389 tests on `main` — a `node` project of 351 + a `renderer` jsdom project of 38; `npm audit` at 0):
+- **Automated tests** (396 tests on `main` — a `node` project of 351 + a `renderer` jsdom project of 45; `npm audit` at 0):
   ```powershell
   npm test
   npm run build
@@ -100,9 +100,11 @@ The two W5-deferred inline domains were extracted in one follow-up PR (**PR #24,
 
 `electron/main.ts` is now **187 lines** (from ~1,046 pre-W5 → 407 post-W5 → 187): `createWindow`, app lifecycle, dir bootstrap, the `createWorkspacePaths(DATA_DIR)` binding, and 14 ordered `register*Handlers(...)` calls — **zero inline IPC handlers remain**. Behavior-preserving relocation only (template wizard, manifest validation, timestamped-backup + atomic write, topology scan all verbatim; sole mechanical edit `WORKSPACES_DIR` → injected `workspacesDir`). Verification: **351/351 tests**, build clean, `npm audit` 0, CI green on `a62c12f`.
 
-### 🚧 IN PROGRESS: W6 — Renderer Store/UI Slicing
+### ✅ COMPLETE: W6-1 — `EvaluationsView` Tab Extraction (renderer decomposition)
 
-Renderer subsystem decomposition, gated by a design pass (read-only inventory: `src/store/workspaceStore.ts` ~2,449 lines / 122 members / 243 cross-domain `get()` calls; `src/components/EvaluationsView.tsx` 1,383 lines / 7 inline tabs). Key gate finding: **there was no renderer safety net** (all pre-W6 tests were `node`-env pure-lib / IPC-handler tests), so W6 starts with tests before slicing. Same branch → PR → CI discipline; each PR is behavior-preserving with `git diff` proof that the store, `electron/**`, and package files are untouched.
+Renderer subsystem decomposition, gated by a design pass (read-only inventory: `src/store/workspaceStore.ts` ~2,449 lines / 122 members / 243 cross-domain `get()` calls; `src/components/EvaluationsView.tsx` 1,383 lines / 7 inline tabs). Key gate finding: **there was no renderer safety net** (all pre-W6 tests were `node`-env pure-lib / IPC-handler tests), so W6 started with tests before slicing. Same branch → PR → CI discipline; each PR is behavior-preserving with `git diff` proof that the store, `electron/**`, and package files are untouched.
+
+The `EvaluationsView` decomposition arc (W6-1) is **done**. All 7 tabs were extracted into `src/components/evaluations/`, one behavior-preserving PR each, and `EvaluationsView.tsx` is now a thin router.
 
 | PR | Scope | Status |
 |---|---|---|
@@ -113,13 +115,13 @@ Renderer subsystem decomposition, gated by a design pass (read-only inventory: `
 | **W6-1 p4** | Extract `FailuresTab` | ✅ merged (`39f71de`, PR #31) |
 | **W6-1 p5** | Extract `PromotionHistoryTab` | ✅ merged (`bebe29a`, PR #33) |
 | **W6-1 p6** | Extract `GoldStandardsTab` | ✅ merged (`2dc5fc2`, PR #35) |
-| **W6-1 p7** | Extract remaining `EvaluationsView` tab: Judges & Definitions (final, heaviest — dual-pane, two forms) | not started |
+| **W6-1 p7** | Extract final `EvaluationsView` tab: `JudgesDefinitionsTab` (dual-pane, two forms) | ✅ merged (`9bc2f13`, PR #37) |
 | **W6-2** | Shared `<Tabs>`/`<Modal>` primitive (only if duplication is real after the tab extractions) | not started |
-| **W6-3 (sub-gate)** | Store slicing — **only after** characterization tests are broadened. Prefer single-store *slice* pattern (not multiple stores) to preserve the 243 cross-domain `get()` reads + side-effect chains; slice leaf domains (doctor/dep/snapshots/provenance) before the highly-referenced core/evals/timeline. | not started |
+| **W6-3 (sub-gate)** | Store slicing — **only after** characterization tests are broadened. Prefer single-store *slice* pattern (not multiple stores) to preserve the 243 cross-domain `get()` reads + side-effect chains; slice leaf domains (doctor/dep/snapshots/provenance) before the highly-referenced core/evals/timeline. | not started — **needs its own design gate before starting** |
 
-**Pattern for the tab extractions (W6-1):** each tab's JSX moves **verbatim** into a pure presentational component under `src/components/evaluations/`; the `EvaluationsView` shell keeps **all** state + store-hook usage and passes props + callbacks down. The only non-JSX edits allowed are build-forced (e.g. removing a now-unused lucide icon import). Every extracted tab gets a focused renderer render test that pins a visible label + a callback. `EvaluationsView.tsx`: 1,383 → 1,125 → 1,064 → 877 → 833 → **692 lines** (Benchmarks, Regression, Approvals, Failures, Promotion History, and Gold Standards all out). Extracted tabs so far: `BenchmarksTab`, `RegressionTab`, `ApprovalsTab`, `FailuresTab`, `PromotionHistoryTab`, `GoldStandardsTab`. Remaining inline tab: Judges & Definitions.
+**Pattern for the tab extractions (W6-1):** each tab's JSX moved **verbatim** into a pure presentational component under `src/components/evaluations/`; the `EvaluationsView` shell keeps **all** state + store-hook usage and passes props + callbacks down. The only non-JSX edits allowed were build-forced (e.g. removing a now-unused lucide icon import). Every extracted tab has a focused renderer render test that pins a visible label + a callback. `EvaluationsView.tsx` line-count trail: 1,383 → 1,330 → 1,125 → 1,064 → 877 → 833 → 692 → **418 lines** (Benchmarks, Regression, Approvals, Failures, Promotion History, Gold Standards, and Judges & Definitions all out). All 7 tabs now extracted: `BenchmarksTab`, `RegressionTab`, `ApprovalsTab`, `FailuresTab`, `PromotionHistoryTab`, `GoldStandardsTab`, `JudgesDefinitionsTab` (`src/components/evaluations/JudgesDefinitionsTab.tsx`, 388 lines). Remaining inline tabs: **none** — the `EvaluationsView` decomposition is complete.
 
-**To resume:** start **W6-1 p7 — extract the Judges & Definitions tab** on a fresh branch (e.g. `refactor/evaluations-judges-definitions-tab`) following the exact p1–p6 pattern. This is the **final and heaviest** `EvaluationsView` tab extraction (dual-pane layout, two forms) and **closes out the `EvaluationsView` decomposition** once merged. Full design-gate rationale (risk register, PR sequencing, store-slice ordering) was approved before W6 began; ask if a fresh session needs the reasoning, not just the checklist above.
+**To resume:** the next W6 step is **W6-3 — Store Slicing Design Gate** for `src/store/workspaceStore.ts`. Do **not** start store slicing, hook/reducer extraction, or any store-API change without first running a dedicated design gate — `workspaceStore.ts` is larger and riskier than `EvaluationsView` was (~2,449 lines, ~243 cross-domain `get()` calls across the renderer), and a naive slice would risk breaking those cross-domain reads. Scope the gate, get it reviewed, and only then open the first slicing PR.
 
 ### Already-closed items from the audit backlog
 
