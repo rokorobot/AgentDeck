@@ -4,10 +4,10 @@
 > into a fresh AI session to continue work with full project context.
 > Regenerate at every milestone release.
 
-**Snapshot:** 2026-07-09 · current version **v1.0.8** (Audit Remediation & Platform Upgrade) · branch `main` @ `9bc2f13`
+**Snapshot:** 2026-07-09 · current version **v1.0.8** (Audit Remediation & Platform Upgrade) · branch `main` @ `592961d`
 **Repo:** https://github.com/rokorobot/AgentDeck.git
 
-Since the v1.0.8 tag, an internal-hardening arc (v1.0.9, untagged) has landed on top of it without a version bump: collision-safe IDs (W1), command-safety unification (W2), `scratch/` retirement into real tests (W3), a shared JSON I/O helper (W4), the **now-complete** `electron/main.ts` decomposition (W5, one IPC domain per PR — 12 PRs, all merged; plus W5.1 final closure, PR #24), and the **now-complete** renderer `EvaluationsView` tab extraction (W6-1, 7 PRs, all merged). See "Next Milestones" below for the completed W5/W5.1/W6-1 record and the gated W6-3 store-slicing next step, and [`docs/roadmap.md`](docs/roadmap.md) for the full forward-looking list.
+Since the v1.0.8 tag, an internal-hardening arc (v1.0.9, untagged) has landed on top of it without a version bump: collision-safe IDs (W1), command-safety unification (W2), `scratch/` retirement into real tests (W3), a shared JSON I/O helper (W4), the **now-complete** `electron/main.ts` decomposition (W5, one IPC domain per PR — 12 PRs, all merged; plus W5.1 final closure, PR #24), the **now-complete** renderer `EvaluationsView` tab extraction (W6-1, 7 PRs, all merged), and the **now-merged** W6-3 p0 store-slicing plumbing (PR #39 — pure type/scaffolding relocation, no domain behavior moved). See "Next Milestones" below for the completed W5/W5.1/W6-1 record, the merged W6-3 p0 plumbing, and the W6-3 p1 DoctorSlice next step, and [`docs/roadmap.md`](docs/roadmap.md) for the full forward-looking list.
 
 ## What AgentDeck is
 
@@ -117,11 +117,22 @@ The `EvaluationsView` decomposition arc (W6-1) is **done**. All 7 tabs were extr
 | **W6-1 p6** | Extract `GoldStandardsTab` | ✅ merged (`2dc5fc2`, PR #35) |
 | **W6-1 p7** | Extract final `EvaluationsView` tab: `JudgesDefinitionsTab` (dual-pane, two forms) | ✅ merged (`9bc2f13`, PR #37) |
 | **W6-2** | Shared `<Tabs>`/`<Modal>` primitive (only if duplication is real after the tab extractions) | not started |
-| **W6-3 (sub-gate)** | Store slicing — **only after** characterization tests are broadened. Prefer single-store *slice* pattern (not multiple stores) to preserve the 243 cross-domain `get()` reads + side-effect chains; slice leaf domains (doctor/dep/snapshots/provenance) before the highly-referenced core/evals/timeline. | not started — **needs its own design gate before starting** |
+| **W6-3 (sub-gate)** | Store-slicing design gate for `workspaceStore.ts`. **Fixed decision:** single Zustand store composed from domain *slices* — one shared `(set, get)` closure, **not** multiple stores — to preserve the 243 cross-domain `get()` reads + side-effect chains; slice leaf domains (doctor/dep/snapshots/provenance) before the highly-referenced core/evals/timeline. | ✅ gate complete — decision fixed |
+| **W6-3 p0** | Near-zero-risk plumbing: moved the ambient `window.api` type block out of `src/store/workspaceStore.ts` into new `src/types/windowApi.d.ts`, and added type-only `src/store/slices/types.ts` (`WorkspaceSliceCreator` helper). **No** domain behavior, state, or actions moved; no store API change; no components/electron/preload/package changes. | ✅ merged (`592961d`, PR #39) |
+| **W6-3 p1** | DoctorSlice proof-of-pattern — **characterization tests FIRST**, then extraction (see "To resume" below). | not started |
 
 **Pattern for the tab extractions (W6-1):** each tab's JSX moved **verbatim** into a pure presentational component under `src/components/evaluations/`; the `EvaluationsView` shell keeps **all** state + store-hook usage and passes props + callbacks down. The only non-JSX edits allowed were build-forced (e.g. removing a now-unused lucide icon import). Every extracted tab has a focused renderer render test that pins a visible label + a callback. `EvaluationsView.tsx` line-count trail: 1,383 → 1,330 → 1,125 → 1,064 → 877 → 833 → 692 → **418 lines** (Benchmarks, Regression, Approvals, Failures, Promotion History, Gold Standards, and Judges & Definitions all out). All 7 tabs now extracted: `BenchmarksTab`, `RegressionTab`, `ApprovalsTab`, `FailuresTab`, `PromotionHistoryTab`, `GoldStandardsTab`, `JudgesDefinitionsTab` (`src/components/evaluations/JudgesDefinitionsTab.tsx`, 388 lines). Remaining inline tabs: **none** — the `EvaluationsView` decomposition is complete.
 
-**To resume:** the next W6 step is **W6-3 — Store Slicing Design Gate** for `src/store/workspaceStore.ts`. Do **not** start store slicing, hook/reducer extraction, or any store-API change without first running a dedicated design gate — `workspaceStore.ts` is larger and riskier than `EvaluationsView` was (~2,449 lines, ~243 cross-domain `get()` calls across the renderer), and a naive slice would risk breaking those cross-domain reads. Scope the gate, get it reviewed, and only then open the first slicing PR.
+**W6-3 p0 — MERGED (PR #39, merge `592961d`).** Near-zero-risk store-slicing plumbing only. `src/store/workspaceStore.ts` went from **2,449 → 2,339 lines** by moving **only** the ambient `window.api` type block out to new **`src/types/windowApi.d.ts`** (a type-only module that `declare global`-augments `Window`, exactly as it did inline). New type-only scaffolding **`src/store/slices/types.ts`** exports the `WorkspaceSliceCreator<S, T>` helper — the shared slice-creator type future domain slices will conform to. **No domain behavior moved, no state/actions moved or renamed, no store API change**; `useWorkspaceStore = create<WorkspaceStore>((set, get) => …)` hook identity is unchanged; **no** components / `electron/**` / `electron/preload.ts` / `package.json` / `package-lock.json` changes. Tests unchanged at **396/396** (node 351/351 + renderer 45/45) — this PR added **no** tests (pure plumbing). The `slices/` directory contains **only** `types.ts` — no domain slice files (e.g. `doctorSlice.ts`) exist yet. The Doctor actions (`runDoctorChecks`, `repairWorkspaceCheck`, `exportDiagnosticBundle`) remain defined **inline** in `workspaceStore.ts`.
+
+**Design decision (fixed at the W6-3 gate, still in force):** the store stays a **single Zustand store composed from domain slices** — one shared `(set, get)` closure — **not** multiple stores, so the ~243 cross-domain `get()` reads and side-effect chains are preserved. Slice leaf domains (doctor/dep/snapshots/provenance) before the highly-referenced core/evals/timeline.
+
+**To resume — W6-3 p1: DoctorSlice proof-of-pattern.** Required order:
+1. **FIRST** add Doctor *characterization* tests that pin the current, unmoved behavior:
+   - `runDoctorChecks()` sets `doctorReport` (currently `workspaceStore.ts:2080`).
+   - `repairWorkspaceCheck()` reuses/triggers `runDoctorChecks()` after a repair (currently `workspaceStore.ts:2094` → `get().runDoctorChecks()`).
+   - `loadEvalsData()` triggers Doctor behavior — the current coupling, `loadEvalsData` calls `get().runDoctorChecks()` (currently `workspaceStore.ts:1034`; verify against the store before relying on it).
+2. **ONLY AFTER** those characterization tests are green should `DoctorSlice` extraction begin. Do not move any Doctor state/actions before the tests pass.
 
 ### Already-closed items from the audit backlog
 
