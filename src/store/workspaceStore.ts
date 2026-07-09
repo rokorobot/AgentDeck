@@ -6,7 +6,7 @@ import { BenchmarkDefinition, RegressionRun, ApprovalQueueItem, FailureCase, Gol
 import { TimelineEvent } from '../types/timeline';
 import { GovernancePolicy, ReleaseCandidate } from '../types/governance';
 import { SnapshotManifest, SnapshotPayload } from '../types/snapshot';
-import { DoctorReport } from '../types/doctor';
+import { createDoctorSlice, DoctorSlice } from './slices/doctorSlice';
 import { DecisionEvidencePackage } from '../types/decisionEvidence';
 import { Agent, AgentSession, AgentWindow, AgentTool, AgentModelBinding } from '../types/agent';
 
@@ -37,7 +37,10 @@ export interface WorkspaceObservability {
   modelCount?: number;
 }
 
-interface WorkspaceStore {
+// WorkspaceStore is exported (type-only) so domain slices can type themselves
+// as WorkspaceSliceCreator<WorkspaceStore, TSlice> — additive, does not change
+// the runtime hook identity, store shape, action names, or consumer API.
+export interface WorkspaceStore extends DoctorSlice {
   workspaces: Workspace[];
   workspacePaths: string[];
   activeWorkspace: Workspace | null;
@@ -144,11 +147,7 @@ interface WorkspaceStore {
     after: any
   ): Promise<void>;
 
-  // Doctor State & Actions
-  doctorReport: DoctorReport | null;
-  runDoctorChecks(): Promise<void>;
-  repairWorkspaceCheck(checkId: string): Promise<{ success: boolean; error?: string }>;
-  exportDiagnosticBundle(): Promise<{ success: boolean; error?: string }>;
+  // Doctor State & Actions — provided by DoctorSlice (see `extends` above / src/store/slices/doctorSlice.ts)
 
   // Decision Evidence Package (DEP) State & Actions
   decisionEvidenceList: DecisionEvidencePackage[];
@@ -185,7 +184,7 @@ interface WorkspaceStore {
 
 const terminalLineBuffers: Record<string, string> = {};
 
-export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
+export const useWorkspaceStore = create<WorkspaceStore>((set, get, store) => {
   let ollamaInterval: NodeJS.Timeout | null = null;
   let healthInterval: NodeJS.Timeout | null = null;
   let offStateListener: (() => void) | null = null;
@@ -222,10 +221,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     releaseCandidates: [],
     snapshotsList: [],
     provenanceList: [],
-    doctorReport: null,
     decisionEvidenceList: [],
     agentSessions: [],
     agentWindows: [],
+
+    // Domain slices (W6-3) — spread into the same store object so the single
+    // shared (set, get) closure is preserved. Doctor: doctorReport state +
+    // runDoctorChecks / repairWorkspaceCheck / exportDiagnosticBundle.
+    ...createDoctorSlice(set, get, store),
 
     init: async () => {
       // 1. Load layout configs and logs
@@ -2066,54 +2069,6 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         }));
       } catch (err) {
         console.error("Failed to record provenance mutation", err);
-      }
-    },
-
-    runDoctorChecks: async () => {
-      const activeWorkspace = get().activeWorkspace;
-      if (!activeWorkspace) return;
-      const rootPath = activeWorkspace.rootPath || null;
-      const presetId = activeWorkspace.id;
-
-      try {
-        const report = await window.api.doctor.runChecks(rootPath, presetId);
-        set({ doctorReport: report });
-      } catch (err) {
-        console.error("Failed to run doctor checks", err);
-      }
-    },
-
-    repairWorkspaceCheck: async (checkId) => {
-      const activeWorkspace = get().activeWorkspace;
-      if (!activeWorkspace) return { success: false, error: "No active workspace." };
-      const rootPath = activeWorkspace.rootPath || null;
-      const presetId = activeWorkspace.id;
-
-      try {
-        const result = await window.api.doctor.repair(rootPath, presetId, checkId);
-        await get().runDoctorChecks();
-        return result;
-      } catch (err: any) {
-        console.error(`Failed to repair check ${checkId}`, err);
-        return { success: false, error: err.message };
-      }
-    },
-
-    exportDiagnosticBundle: async () => {
-      const activeWorkspace = get().activeWorkspace;
-      if (!activeWorkspace) return { success: false, error: "No active workspace." };
-      const rootPath = activeWorkspace.rootPath || null;
-      const presetId = activeWorkspace.id;
-
-      try {
-        const result = await window.api.doctor.exportDiagnosticBundle(rootPath, presetId);
-        if (result.success) {
-          await get().addSystemLog(`Diagnostic bundle exported successfully`, 'success');
-        }
-        return result;
-      } catch (err: any) {
-        console.error("Failed to export diagnostic bundle", err);
-        return { success: false, error: err.message };
       }
     },
 
