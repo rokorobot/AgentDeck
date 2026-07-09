@@ -4,7 +4,7 @@
 > into a fresh AI session to continue work with full project context.
 > Regenerate at every milestone release.
 
-**Snapshot:** 2026-07-09 · current version **v1.0.8** (Audit Remediation & Platform Upgrade) · branch `main` @ `bebe29a`
+**Snapshot:** 2026-07-09 · current version **v1.0.8** (Audit Remediation & Platform Upgrade) · branch `main` @ `2dc5fc2`
 **Repo:** https://github.com/rokorobot/AgentDeck.git
 
 Since the v1.0.8 tag, an internal-hardening arc (v1.0.9, untagged) has landed on top of it without a version bump: collision-safe IDs (W1), command-safety unification (W2), `scratch/` retirement into real tests (W3), a shared JSON I/O helper (W4), the **now-complete** `electron/main.ts` decomposition (W5, one IPC domain per PR — 12 PRs, all merged; plus W5.1 final closure, PR #24), and the **in-progress** renderer store/UI slicing (W6). See "Next Milestones" below for the completed W5/W5.1 record and the current W6 status, and [`docs/roadmap.md`](docs/roadmap.md) for the full forward-looking list.
@@ -55,7 +55,7 @@ Observability & Health Checks             Port telemetry, Ollama model check, lo
   ```powershell
   tsc --project tsconfig.electron.json
   ```
-- **Automated tests** (382 tests on `main` — a `node` project of 351 + a `renderer` jsdom project of 31; `npm audit` at 0):
+- **Automated tests** (389 tests on `main` — a `node` project of 351 + a `renderer` jsdom project of 38; `npm audit` at 0):
   ```powershell
   npm test
   npm run build
@@ -112,13 +112,14 @@ Renderer subsystem decomposition, gated by a design pass (read-only inventory: `
 | **W6-1 p3** | Extract `ApprovalsTab` | ✅ merged (`1ae3455`, PR #29) |
 | **W6-1 p4** | Extract `FailuresTab` | ✅ merged (`39f71de`, PR #31) |
 | **W6-1 p5** | Extract `PromotionHistoryTab` | ✅ merged (`bebe29a`, PR #33) |
-| **W6-1 p6+** | Extract remaining `EvaluationsView` tabs: gold standards → judges & definitions (one small PR each, Judges & Definitions saved for last) | not started |
+| **W6-1 p6** | Extract `GoldStandardsTab` | ✅ merged (`2dc5fc2`, PR #35) |
+| **W6-1 p7** | Extract remaining `EvaluationsView` tab: Judges & Definitions (final, heaviest — dual-pane, two forms) | not started |
 | **W6-2** | Shared `<Tabs>`/`<Modal>` primitive (only if duplication is real after the tab extractions) | not started |
 | **W6-3 (sub-gate)** | Store slicing — **only after** characterization tests are broadened. Prefer single-store *slice* pattern (not multiple stores) to preserve the 243 cross-domain `get()` reads + side-effect chains; slice leaf domains (doctor/dep/snapshots/provenance) before the highly-referenced core/evals/timeline. | not started |
 
-**Pattern for the tab extractions (W6-1):** each tab's JSX moves **verbatim** into a pure presentational component under `src/components/evaluations/`; the `EvaluationsView` shell keeps **all** state + store-hook usage and passes props + callbacks down. The only non-JSX edits allowed are build-forced (e.g. removing a now-unused lucide icon import). Every extracted tab gets a focused renderer render test that pins a visible label + a callback. `EvaluationsView.tsx`: 1,383 → 1,125 → 1,064 → 877 → **833 lines** (Benchmarks, Regression, Approvals, Failures, and Promotion History all out). Extracted tabs so far: `BenchmarksTab`, `RegressionTab`, `ApprovalsTab`, `FailuresTab`, `PromotionHistoryTab`. Remaining inline tabs: Judges & Definitions, Gold Standards.
+**Pattern for the tab extractions (W6-1):** each tab's JSX moves **verbatim** into a pure presentational component under `src/components/evaluations/`; the `EvaluationsView` shell keeps **all** state + store-hook usage and passes props + callbacks down. The only non-JSX edits allowed are build-forced (e.g. removing a now-unused lucide icon import). Every extracted tab gets a focused renderer render test that pins a visible label + a callback. `EvaluationsView.tsx`: 1,383 → 1,125 → 1,064 → 877 → 833 → **692 lines** (Benchmarks, Regression, Approvals, Failures, Promotion History, and Gold Standards all out). Extracted tabs so far: `BenchmarksTab`, `RegressionTab`, `ApprovalsTab`, `FailuresTab`, `PromotionHistoryTab`, `GoldStandardsTab`. Remaining inline tab: Judges & Definitions.
 
-**To resume:** start **W6-1 p6 — extract the Gold Standards tab** on a fresh branch (`refactor/evaluations-gold-standards-tab`) following the exact p1–p5 pattern. Save **Judges & Definitions** for its own heavier, final PR — it carries more shell-owned state/logic than the other tabs. Full design-gate rationale (risk register, PR sequencing, store-slice ordering) was approved before W6 began; ask if a fresh session needs the reasoning, not just the checklist above.
+**To resume:** start **W6-1 p7 — extract the Judges & Definitions tab** on a fresh branch (e.g. `refactor/evaluations-judges-definitions-tab`) following the exact p1–p6 pattern. This is the **final and heaviest** `EvaluationsView` tab extraction (dual-pane layout, two forms) and **closes out the `EvaluationsView` decomposition** once merged. Full design-gate rationale (risk register, PR sequencing, store-slice ordering) was approved before W6 began; ask if a fresh session needs the reasoning, not just the checklist above.
 
 ### Already-closed items from the audit backlog
 
