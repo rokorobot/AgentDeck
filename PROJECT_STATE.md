@@ -4,10 +4,10 @@
 > into a fresh AI session to continue work with full project context.
 > Regenerate at every milestone release.
 
-**Snapshot:** 2026-07-09 · current version **v1.0.8** (Audit Remediation & Platform Upgrade) · branch `main` @ `a62c12f`
+**Snapshot:** 2026-07-09 · current version **v1.0.8** (Audit Remediation & Platform Upgrade) · branch `main` @ `1ae3455`
 **Repo:** https://github.com/rokorobot/AgentDeck.git
 
-Since the v1.0.8 tag, an internal-hardening arc (v1.0.9, untagged) has landed on top of it without a version bump: collision-safe IDs (W1), command-safety unification (W2), `scratch/` retirement into real tests (W3), a shared JSON I/O helper (W4), and the **now-complete** `electron/main.ts` decomposition (W5, one IPC domain per PR — 12 PRs, all merged; plus W5.1 final closure, PR #24). See "Next Milestones" below for the completed W5/W5.1 record and [`docs/roadmap.md`](docs/roadmap.md) for the full forward-looking list.
+Since the v1.0.8 tag, an internal-hardening arc (v1.0.9, untagged) has landed on top of it without a version bump: collision-safe IDs (W1), command-safety unification (W2), `scratch/` retirement into real tests (W3), a shared JSON I/O helper (W4), the **now-complete** `electron/main.ts` decomposition (W5, one IPC domain per PR — 12 PRs, all merged; plus W5.1 final closure, PR #24), and the **in-progress** renderer store/UI slicing (W6). See "Next Milestones" below for the completed W5/W5.1 record and the current W6 status, and [`docs/roadmap.md`](docs/roadmap.md) for the full forward-looking list.
 
 ## What AgentDeck is
 
@@ -55,7 +55,7 @@ Observability & Health Checks             Port telemetry, Ollama model check, lo
   ```powershell
   tsc --project tsconfig.electron.json
   ```
-- **Automated tests** (351 tests on `main`; `npm audit` at 0):
+- **Automated tests** (372 tests on `main` — a `node` project of 351 + a `renderer` jsdom project of 21; `npm audit` at 0):
   ```powershell
   npm test
   npm run build
@@ -100,7 +100,23 @@ The two W5-deferred inline domains were extracted in one follow-up PR (**PR #24,
 
 `electron/main.ts` is now **187 lines** (from ~1,046 pre-W5 → 407 post-W5 → 187): `createWindow`, app lifecycle, dir bootstrap, the `createWorkspacePaths(DATA_DIR)` binding, and 14 ordered `register*Handlers(...)` calls — **zero inline IPC handlers remain**. Behavior-preserving relocation only (template wizard, manifest validation, timestamped-backup + atomic write, topology scan all verbatim; sole mechanical edit `WORKSPACES_DIR` → injected `workspacesDir`). Verification: **351/351 tests**, build clean, `npm audit` 0, CI green on `a62c12f`.
 
-**Next milestone: W6 Design Gate — Store/UI Slicing** (renderer subsystem: `workspaceStore.ts` domain slices, `EvaluationsView` decomposition, state boundaries). This is a different subsystem with a different risk profile than W5 and needs its own design gate + frontend-state inventory before any code moves. Not started.
+### 🚧 IN PROGRESS: W6 — Renderer Store/UI Slicing
+
+Renderer subsystem decomposition, gated by a design pass (read-only inventory: `src/store/workspaceStore.ts` ~2,449 lines / 122 members / 243 cross-domain `get()` calls; `src/components/EvaluationsView.tsx` 1,383 lines / 7 inline tabs). Key gate finding: **there was no renderer safety net** (all pre-W6 tests were `node`-env pure-lib / IPC-handler tests), so W6 starts with tests before slicing. Same branch → PR → CI discipline; each PR is behavior-preserving with `git diff` proof that the store, `electron/**`, and package files are untouched.
+
+| PR | Scope | Status |
+|---|---|---|
+| **W6-0** | Renderer test harness: 2nd Vitest project (jsdom) alongside the untouched `node` project; `window.api` stub; store characterization tests + EvaluationsView smoke. **DevDependencies only** (`jsdom`, `@testing-library/react`, `@testing-library/jest-dom`). | ✅ merged (`7830bf5`, PR #26) |
+| **W6-1 p1** | Extract `BenchmarksTab` → `src/components/evaluations/BenchmarksTab.tsx` | ✅ merged (`3c91ac1`, PR #27) |
+| **W6-1 p2** | Extract `RegressionTab` | ✅ merged (`9574379`, PR #28) |
+| **W6-1 p3** | Extract `ApprovalsTab` | ✅ merged (`1ae3455`, PR #29) |
+| **W6-1 p4+** | Extract remaining `EvaluationsView` tabs: failures → judges → gold-standards → promotions (one small PR each) | not started |
+| **W6-2** | Shared `<Tabs>`/`<Modal>` primitive (only if duplication is real after the tab extractions) | not started |
+| **W6-3 (sub-gate)** | Store slicing — **only after** characterization tests are broadened. Prefer single-store *slice* pattern (not multiple stores) to preserve the 243 cross-domain `get()` reads + side-effect chains; slice leaf domains (doctor/dep/snapshots/provenance) before the highly-referenced core/evals/timeline. | not started |
+
+**Pattern for the tab extractions (W6-1):** each tab's JSX moves **verbatim** into a pure presentational component under `src/components/evaluations/`; the `EvaluationsView` shell keeps **all** state + store-hook usage and passes props + callbacks down. The only non-JSX edits allowed are build-forced (e.g. removing a now-unused lucide icon import). Every extracted tab gets a focused renderer render test that pins a visible label + a callback. `EvaluationsView.tsx`: 1,383 → 1,125 → **1,064 lines** (Benchmarks, Regression, and Approvals all out). Extracted tabs so far: `BenchmarksTab`, `RegressionTab`, `ApprovalsTab`.
+
+**To resume:** start **W6-1 p4 — extract the Failures (Failure Library) tab** on a fresh branch (`refactor/evaluations-failures-tab`) following the exact p1–p3 pattern. The Failures tab is the first with shell-owned form state (`isAddingFailure`, `newFailure*`, and the conversion state `convertingFailureId`/`conversionSuiteId`/`conversionThreshold` + `handleAddFailureSubmit` / `convertFailureToTestCase`) — keep that state in the shell and thread it as props/callbacks. Full design-gate rationale (risk register, PR sequencing, store-slice ordering) was approved before W6 began; ask if a fresh session needs the reasoning, not just the checklist above.
 
 ### Already-closed items from the audit backlog
 
