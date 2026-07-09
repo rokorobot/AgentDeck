@@ -285,3 +285,112 @@ describe('workspaceStore — provenance domain (W6-3 p2 pre-slice characterizati
     expect(api.provenance.recordMutation).toHaveBeenCalled();
   });
 });
+
+describe('workspaceStore — decision evidence (DEP) domain (W6-3 p3 pre-slice characterization)', () => {
+  // DEP is mostly leaf-like, but signAndSaveDecisionEvidence() performs a
+  // cross-domain governance refresh on success (reloads releaseCandidates via
+  // governance.loadData + writes governance state), and loadEvalsData() loads
+  // DEP inline as part of its atomic hydration batch. These pin all of that
+  // against the un-moved inline code so the slice move is provably preserving.
+  const seedWs = (store: any) =>
+    store.setState({ activeWorkspace: { id: 'tm4', name: 'TM4', rootPath: null } as any });
+
+  it('loadDecisionEvidence() calls dep.loadAll and stores the list (with active workspace)', async () => {
+    const deps = [{ id: 'DEP-1' }, { id: 'DEP-2' }];
+    const { store, api } = await freshStore({ dep: { loadAll: vi.fn(async () => deps) } });
+    seedWs(store);
+
+    await store.getState().loadDecisionEvidence();
+
+    expect(api.dep.loadAll).toHaveBeenCalledWith(null, 'tm4');
+    expect(store.getState().decisionEvidenceList).toEqual(deps);
+  });
+
+  it('loadDecisionEvidence() early-returns without an active workspace (no API call)', async () => {
+    const { store, api } = await freshStore();
+    await store.getState().loadDecisionEvidence();
+    expect(api.dep.loadAll).not.toHaveBeenCalled();
+  });
+
+  it('generateDecisionEvidence() calls dep.generate and returns its result (with active workspace)', async () => {
+    const generated = { id: 'DEP-gen' };
+    const { store, api } = await freshStore({ dep: { generate: vi.fn(async () => generated) } });
+    seedWs(store);
+
+    const result = await store.getState().generateDecisionEvidence('rc-1');
+
+    expect(api.dep.generate).toHaveBeenCalledWith(null, 'tm4', 'rc-1');
+    expect(result).toEqual(generated);
+  });
+
+  it('generateDecisionEvidence() throws without an active workspace and does not call the API', async () => {
+    const { store, api } = await freshStore();
+    await expect(store.getState().generateDecisionEvidence('rc-1')).rejects.toThrow('No active workspace.');
+    expect(api.dep.generate).not.toHaveBeenCalled();
+  });
+
+  it('signAndSaveDecisionEvidence() signs, reloads DEP, AND refreshes governance releaseCandidates on success', async () => {
+    const refreshed = [{ id: 'rc-refreshed' }];
+    const { store, api } = await freshStore({
+      dep: { signAndSave: vi.fn(async () => ({ success: true })) },
+      governance: { loadData: vi.fn(async () => ({ policies: null, releaseCandidates: refreshed })) },
+    });
+    seedWs(store);
+
+    const result = await store.getState().signAndSaveDecisionEvidence(
+      { id: 'DEP-1' } as any, 'rationale', 'routine',
+    );
+
+    // DEP sign/save with the current arg shape.
+    expect(api.dep.signAndSave).toHaveBeenCalledWith(null, 'tm4', { id: 'DEP-1' }, 'rationale', 'routine', undefined);
+    // Intra-DEP reload.
+    expect(api.dep.loadAll).toHaveBeenCalled();
+    // Cross-domain governance refresh + write (the p3 wrinkle that must be preserved).
+    expect(api.governance.loadData).toHaveBeenCalledWith(null, 'tm4');
+    expect(store.getState().releaseCandidates).toEqual(refreshed);
+    expect(result).toEqual({ success: true });
+  });
+
+  it('signAndSaveDecisionEvidence() early-returns without an active workspace (no DEP or governance calls)', async () => {
+    const { store, api } = await freshStore();
+    const result = await store.getState().signAndSaveDecisionEvidence({ id: 'DEP-1' } as any, 'r', 'routine');
+    expect(result.success).toBe(false);
+    expect(api.dep.signAndSave).not.toHaveBeenCalled();
+    expect(api.governance.loadData).not.toHaveBeenCalled();
+  });
+
+  it('verifyDecisionEvidence() calls dep.verify and returns its result', async () => {
+    const verdict = { success: true, integrityStatus: 'verified' as const };
+    const { store, api } = await freshStore({ dep: { verify: vi.fn(async () => verdict) } });
+    seedWs(store);
+
+    const result = await store.getState().verifyDecisionEvidence('DEP-1');
+
+    expect(api.dep.verify).toHaveBeenCalledWith(null, 'tm4', 'DEP-1');
+    expect(result).toEqual(verdict);
+  });
+
+  it('exportDecisionEvidenceJson()/Markdown() call their respective dep export APIs', async () => {
+    const { store, api } = await freshStore();
+    seedWs(store);
+
+    await store.getState().exportDecisionEvidenceJson('DEP-1');
+    await store.getState().exportDecisionEvidenceMarkdown('DEP-1');
+
+    expect(api.dep.exportJson).toHaveBeenCalledWith(null, 'tm4', 'DEP-1');
+    expect(api.dep.exportMarkdown).toHaveBeenCalledWith(null, 'tm4', 'DEP-1');
+  });
+
+  it('HYDRATION residual: loadEvalsData() loads DEP inline (dep.loadAll + decisionEvidenceList write)', async () => {
+    const deps = [{ id: 'DEP-hydrated' }];
+    const { store, api } = await freshStore({ dep: { loadAll: vi.fn(async () => deps) } });
+    seedWs(store);
+
+    await store.getState().loadEvalsData();
+
+    // This atomic-hydration DEP read is intentionally left in loadEvalsData()
+    // (accepted residual, mirroring the p2 provenance ruling). It must survive.
+    expect(api.dep.loadAll).toHaveBeenCalledWith(null, 'tm4');
+    expect(store.getState().decisionEvidenceList).toEqual(deps);
+  });
+});
