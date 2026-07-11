@@ -9,7 +9,7 @@ import { SnapshotManifest, SnapshotPayload } from '../types/snapshot';
 import { createDoctorSlice, DoctorSlice } from './slices/doctorSlice';
 import { createProvenanceSlice, ProvenanceSlice } from './slices/provenanceSlice';
 import { createDepSlice, DepSlice } from './slices/depSlice';
-import { Agent, AgentSession, AgentWindow, AgentTool, AgentModelBinding } from '../types/agent';
+import { createAgentsSlice, AgentsSlice } from './slices/agentsSlice';
 
 // The global `window.api` (Electron preload bridge) type augmentation lives in
 // src/types/windowApi.d.ts (W6-3 p0). It is ambient and picked up via tsconfig
@@ -41,7 +41,7 @@ export interface WorkspaceObservability {
 // WorkspaceStore is exported (type-only) so domain slices can type themselves
 // as WorkspaceSliceCreator<WorkspaceStore, TSlice> — additive, does not change
 // the runtime hook identity, store shape, action names, or consumer API.
-export interface WorkspaceStore extends DoctorSlice, ProvenanceSlice, DepSlice {
+export interface WorkspaceStore extends DoctorSlice, ProvenanceSlice, DepSlice, AgentsSlice {
   workspaces: Workspace[];
   workspacePaths: string[];
   activeWorkspace: Workspace | null;
@@ -143,14 +143,7 @@ export interface WorkspaceStore extends DoctorSlice, ProvenanceSlice, DepSlice {
 
   // Decision Evidence Package (DEP) State & Actions — provided by DepSlice (see `extends` above / src/store/slices/depSlice.ts)
 
-  // Agent Workspace State & Actions
-  agentSessions: AgentSession[];
-  agentWindows: AgentWindow[];
-  addAgent(name: string, role: string, modelBinding: AgentModelBinding, tools: AgentTool[]): Promise<void>;
-  updateAgent(agentId: string, patch: Partial<Agent>): Promise<void>;
-  removeAgent(agentId: string): Promise<void>;
-  startAgentSession(agentId: string): Promise<void>;
-  stopAgentSession(sessionId: string): Promise<void>;
+  // Agent Workspace State & Actions — provided by AgentsSlice (see `extends` above / src/store/slices/agentsSlice.ts)
 }
 
 const terminalLineBuffers: Record<string, string> = {};
@@ -191,8 +184,6 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get, store) => {
     governancePolicies: null,
     releaseCandidates: [],
     snapshotsList: [],
-    agentSessions: [],
-    agentWindows: [],
 
     // Domain slices (W6-3) — spread into the same store object so the single
     // shared (set, get) closure is preserved.
@@ -203,9 +194,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get, store) => {
     //   DEP: decisionEvidenceList + load/generate/signAndSave/verify/exportJson/
     //     exportMarkdown (signAndSave refreshes governance releaseCandidates on
     //     success — existing cross-domain behavior, preserved).
+    //   Agents: agentSessions + agentWindows + addAgent/updateAgent/removeAgent/
+    //     startAgentSession/stopAgentSession (no direct IPC; persists via
+    //     get().saveActiveWorkspace and calls core createTerminal/killTerminal).
     ...createDoctorSlice(set, get, store),
     ...createProvenanceSlice(set, get, store),
     ...createDepSlice(set, get, store),
+    ...createAgentsSlice(set, get, store),
 
     init: async () => {
       // 1. Load layout configs and logs
@@ -2011,145 +2006,5 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get, store) => {
       }
     },
 
-    addAgent: async (name: string, role: string, modelBinding: AgentModelBinding, tools: AgentTool[]) => {
-      const { activeWorkspace, workspaces } = get();
-      if (!activeWorkspace) return;
-
-      const newAgent: Agent = {
-        id: `agent_${crypto.randomUUID()}`,
-        workspaceId: activeWorkspace.id,
-        name,
-        role,
-        status: 'idle',
-        modelBinding,
-        tools,
-        createdAt: new Date().toISOString()
-      };
-
-      const updatedWorkspace = {
-        ...activeWorkspace,
-        agents: [...(activeWorkspace.agents || []), newAgent]
-      };
-
-      const res = await get().saveActiveWorkspace(updatedWorkspace);
-      if (res.success) {
-        set({
-          activeWorkspace: updatedWorkspace,
-          workspaces: workspaces.map(w => w.id === activeWorkspace.id ? updatedWorkspace : w)
-        });
-        await get().addSystemLog(`Added agent "${name}" to workspace.`, 'success');
-      }
-    },
-
-    updateAgent: async (agentId: string, patch: Partial<Agent>) => {
-      const { activeWorkspace, workspaces } = get();
-      if (!activeWorkspace || !activeWorkspace.agents) return;
-
-      const updatedAgents = activeWorkspace.agents.map(a => 
-        a.id === agentId ? { ...a, ...patch } as Agent : a
-      );
-
-      const updatedWorkspace = {
-        ...activeWorkspace,
-        agents: updatedAgents
-      };
-
-      const res = await get().saveActiveWorkspace(updatedWorkspace);
-      if (res.success) {
-        set({
-          activeWorkspace: updatedWorkspace,
-          workspaces: workspaces.map(w => w.id === activeWorkspace.id ? updatedWorkspace : w)
-        });
-      }
-    },
-
-    removeAgent: async (agentId: string) => {
-      const { activeWorkspace, workspaces } = get();
-      if (!activeWorkspace || !activeWorkspace.agents) return;
-
-      const updatedAgents = activeWorkspace.agents.filter(a => a.id !== agentId);
-      const updatedWorkspace = {
-        ...activeWorkspace,
-        agents: updatedAgents
-      };
-
-      const res = await get().saveActiveWorkspace(updatedWorkspace);
-      if (res.success) {
-        set({
-          activeWorkspace: updatedWorkspace,
-          workspaces: workspaces.map(w => w.id === activeWorkspace.id ? updatedWorkspace : w)
-        });
-        await get().addSystemLog(`Removed agent from workspace.`, 'info');
-      }
-    },
-
-    startAgentSession: async (agentId: string) => {
-      const { activeWorkspace } = get();
-      if (!activeWorkspace || !activeWorkspace.agents) return;
-
-      const agent = activeWorkspace.agents.find(a => a.id === agentId);
-      if (!agent) return;
-
-      const sessionId = `session_${crypto.randomUUID()}`;
-      const termName = `${agent.name} Shell`;
-      const cwd = activeWorkspace.rootPath || 'C:\\Users\\Robert\\AgentDeck';
-      const shell = 'powershell.exe';
-
-      // 1. Create a terminal window
-      const termId = await get().createTerminal(termName, shell, cwd);
-
-      // 2. Create the session object
-      const newSession: AgentSession = {
-        id: sessionId,
-        agentId,
-        workspaceId: activeWorkspace.id,
-        modelSnapshot: { ...agent.modelBinding },
-        terminalId: termId,
-        status: 'running',
-        startedAt: new Date().toISOString()
-      };
-
-      // 3. Create the window container definition
-      const newWindow: AgentWindow = {
-        id: `window_${sessionId}_term`,
-        sessionId,
-        workspaceId: activeWorkspace.id,
-        type: 'terminal',
-        title: `${agent.name} Console`,
-        state: 'open'
-      };
-
-      // Update store state
-      set(state => ({
-        agentSessions: [...state.agentSessions, newSession],
-        agentWindows: [...state.agentWindows, newWindow]
-      }));
-
-      // Set agent status to active
-      await get().updateAgent(agentId, { status: 'active' });
-      await get().addSystemLog(`Started session for agent "${agent.name}".`, 'success');
-    },
-
-    stopAgentSession: async (sessionId: string) => {
-      const { agentSessions, agentWindows } = get();
-      const session = agentSessions.find(s => s.id === sessionId);
-      if (!session) return;
-
-      // 1. Kill terminal if it was created
-      if (session.terminalId) {
-        await get().killTerminal(session.terminalId);
-      }
-
-      // 2. Update agent status back to idle
-      await get().updateAgent(session.agentId, { status: 'idle' });
-
-      // 3. Update stores
-      set({
-        agentSessions: agentSessions.filter(s => s.id !== sessionId),
-        agentWindows: agentWindows.filter(w => w.sessionId !== sessionId)
-      });
-
-      await get().addSystemLog(`Stopped session for agent.`, 'info');
-    }
   };
 });

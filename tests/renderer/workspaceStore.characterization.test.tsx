@@ -394,3 +394,119 @@ describe('workspaceStore — decision evidence (DEP) domain (W6-3 p3 pre-slice c
     expect(store.getState().decisionEvidenceList).toEqual(deps);
   });
 });
+
+describe('workspaceStore — agents domain (W6-3 p4 pre-slice characterization)', () => {
+  // Agents has NO direct IPC — it persists via get().saveActiveWorkspace(...) and
+  // its session actions call into core get().createTerminal(...) / get().killTerminal(...).
+  // These pin the direct actions, guards, and (critically) the outbound-into-core
+  // coupling so the slice move preserves the shared-closure behavior. There is NO
+  // agents hydration in loadEvalsData()/init(); the final test records that absence.
+  //
+  // NOTE: the real actions are addAgent/updateAgent/removeAgent/startAgentSession/
+  // stopAgentSession — not the open/close/assign names the p4 prompt guessed.
+
+  // saveActiveWorkspace() only "succeeds" if workspaces.save returns a workspace,
+  // so echo the saved config back as the workspace for the persistence paths.
+  // Factory (not a shared const) so each test gets a fresh save mock — a shared
+  // vi.fn would bleed call history across tests.
+  const echoSave = () => ({ workspaces: { save: vi.fn(async (_id: any, _rp: any, config: any) => ({ success: true, workspace: config })) } });
+  const wsWith = (agents: any[]) => ({ id: 'tm4', name: 'TM4', rootPath: null, agents } as any);
+
+  it('addAgent() persists via saveActiveWorkspace and appends the agent (with active workspace)', async () => {
+    const { store, api } = await freshStore(echoSave());
+    store.setState({ activeWorkspace: wsWith([]), workspaces: [wsWith([])] });
+
+    await store.getState().addAgent('Agent One', 'builder', { provider: 'ollama' } as any, [] as any);
+
+    expect(api.workspaces.save).toHaveBeenCalled(); // outbound persistence into core
+    expect(store.getState().activeWorkspace!.agents!.map((a: any) => a.name)).toContain('Agent One');
+  });
+
+  it('addAgent() early-returns without an active workspace (no persistence)', async () => {
+    const { store, api } = await freshStore(echoSave());
+    await store.getState().addAgent('Agent One', 'builder', {} as any, [] as any);
+    expect(api.workspaces.save).not.toHaveBeenCalled();
+  });
+
+  it('updateAgent() patches the agent and persists via saveActiveWorkspace', async () => {
+    const { store, api } = await freshStore(echoSave());
+    store.setState({ activeWorkspace: wsWith([{ id: 'a1', name: 'A1', status: 'idle' }]), workspaces: [wsWith([{ id: 'a1', name: 'A1', status: 'idle' }])] });
+
+    await store.getState().updateAgent('a1', { status: 'active' });
+
+    expect(api.workspaces.save).toHaveBeenCalled();
+    expect(store.getState().activeWorkspace!.agents!.find((a: any) => a.id === 'a1').status).toBe('active');
+  });
+
+  it('removeAgent() removes the agent and persists via saveActiveWorkspace', async () => {
+    const { store, api } = await freshStore(echoSave());
+    store.setState({ activeWorkspace: wsWith([{ id: 'a1', name: 'A1' }]), workspaces: [wsWith([{ id: 'a1', name: 'A1' }])] });
+
+    await store.getState().removeAgent('a1');
+
+    expect(api.workspaces.save).toHaveBeenCalled();
+    expect(store.getState().activeWorkspace!.agents!.find((a: any) => a.id === 'a1')).toBeUndefined();
+  });
+
+  it('OUTBOUND (core): startAgentSession() calls get().createTerminal() and records a session + window', async () => {
+    const agent = { id: 'a1', name: 'A1', status: 'idle', modelBinding: { provider: 'ollama' } };
+    const { store, api } = await freshStore(echoSave());
+    store.setState({ activeWorkspace: wsWith([agent]), workspaces: [wsWith([agent])] });
+
+    await store.getState().startAgentSession('a1');
+
+    // Outbound into the core terminal action (which stays in workspaceStore.ts).
+    expect(api.terminal.create).toHaveBeenCalled();
+    const s = store.getState();
+    expect(s.agentSessions).toHaveLength(1);
+    expect(s.agentSessions[0].agentId).toBe('a1');
+    // createTerminal() mints its own id (term-<wsId>-user-<uuid>) and returns it;
+    // the session records that returned terminal id.
+    expect(s.agentSessions[0].terminalId).toMatch(/^term-tm4-user-/);
+    expect(s.agentWindows).toHaveLength(1);
+    expect(s.agentWindows[0].sessionId).toBe(s.agentSessions[0].id);
+  });
+
+  it('startAgentSession() early-returns with no active workspace (no terminal created)', async () => {
+    const { store, api } = await freshStore(echoSave());
+    await store.getState().startAgentSession('a1');
+    expect(api.terminal.create).not.toHaveBeenCalled();
+    expect(store.getState().agentSessions).toHaveLength(0);
+  });
+
+  it('OUTBOUND (core): stopAgentSession() calls get().killTerminal() and clears the session + window', async () => {
+    const agent = { id: 'a1', name: 'A1', status: 'active', modelBinding: {} };
+    const session = { id: 'sess1', agentId: 'a1', workspaceId: 'tm4', terminalId: 'term-abc', status: 'running' };
+    const win = { id: 'win1', sessionId: 'sess1', workspaceId: 'tm4', type: 'terminal', state: 'open' };
+    const { store, api } = await freshStore(echoSave());
+    store.setState({
+      activeWorkspace: wsWith([agent]), workspaces: [wsWith([agent])],
+      agentSessions: [session] as any, agentWindows: [win] as any,
+    });
+
+    await store.getState().stopAgentSession('sess1');
+
+    // Outbound into the core terminal action (which stays in workspaceStore.ts).
+    expect(api.terminal.kill).toHaveBeenCalledWith('term-abc');
+    expect(store.getState().agentSessions).toHaveLength(0);
+    expect(store.getState().agentWindows).toHaveLength(0);
+  });
+
+  it('stopAgentSession() is a no-op for an unknown session id (no terminal kill)', async () => {
+    const { store, api } = await freshStore(echoSave());
+    await store.getState().stopAgentSession('does-not-exist');
+    expect(api.terminal.kill).not.toHaveBeenCalled();
+  });
+
+  it('NO hydration residual: loadEvalsData() does not populate agentSessions/agentWindows', async () => {
+    const { store } = await freshStore();
+    store.setState({ activeWorkspace: { id: 'tm4', name: 'TM4', rootPath: null } as any });
+
+    await store.getState().loadEvalsData();
+
+    // Unlike provenance/DEP, agents are NOT part of the hydration batch — so the
+    // slice extraction leaves ZERO agents residual in loadEvalsData().
+    expect(store.getState().agentSessions).toEqual([]);
+    expect(store.getState().agentWindows).toEqual([]);
+  });
+});
